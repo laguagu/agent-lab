@@ -1,0 +1,56 @@
+# Development stack.
+#
+# On Windows the orchestrator and the web app run on the HOST (`bun run dev`), not here:
+#   - the orchestrator needs a Docker connection, and on Windows that is a named pipe
+#     which is fragile to pass into a container. On the host dockerode finds it directly.
+#   - Next.js hot reload is faster without a bind-mount layer.
+#
+# Only what genuinely benefits from a container runs here.
+#
+#   docker compose up -d litellm        # model router
+#   bun run dev:orchestrator            # host
+#   bun run dev:web                     # host
+
+services:
+  litellm:
+    # Pinned by digest, not by a moving tag. LiteLLM 1.82.7 and 1.82.8 shipped
+    # credential-stealing malware (PyPI, 2026-03-24), so the version has to be a
+    # deliberate choice rather than whatever `latest` resolves to.
+    # v1.98.0 verified 2026-08-25.
+    image: ghcr.io/berriai/litellm:v1.98.0@sha256:d70b5e0686ecfa186b0f779d4681cf2ff17bbe9c9d7b7301d2e59fce246b668d
+    container_name: skill-lab-litellm
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes:
+      - ./infra/litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      # The key runner sessions authenticate with.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      # Provider credentials live ONLY here, never inside a runner container.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_FOUNDRY_API_KEY: ${ANTHROPIC_FOUNDRY_API_KEY:-}
+      ANTHROPIC_FOUNDRY_BASE: ${ANTHROPIC_FOUNDRY_BASE:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_ENDPOINT: ${AZURE_ENDPOINT:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-2024-10-21}
+      AZURE_CHAT_DEPLOYMENT: ${AZURE_CHAT_DEPLOYMENT:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+    ports:
+      # Loopback only. Runner containers reach it through host.docker.internal.
+      - "127.0.0.1:4000:4000"
+    networks:
+      - agents
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/health/liveliness"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  # Runner containers join this network. They cannot see each other on the host
+  # network and reach nothing but the model router.
+  agents:
+    name: skill-lab-agents
+    driver: bridge

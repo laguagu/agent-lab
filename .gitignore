@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Materialised skill library: personal content, regenerate with `bun run sync-skills`
+.skills-cache/
+
+# Local state
+.data/
+*.log
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
