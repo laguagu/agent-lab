@@ -1,8 +1,12 @@
-# The three tracks
+# The tracks
 
-There is no single way to run an agent in a sandbox. There are at least three, they make
-different trade-offs, and the trade-offs only become visible when you run all three against
-the same task. That comparison is what this repository is for.
+There is no single way to run an agent in a sandbox. The tracks below make different
+trade-offs, and the trade-offs only become visible when you run them against the same task.
+That comparison is what this repository is for.
+
+Two tracks are built — `claude-container` and `codex-container` — and two are designs to
+be verified. The wider field, including vendor-hosted agent loops and hosted sandboxes
+that do not fit this lab's shape, is surveyed in [01-options.md](01-options.md).
 
 Every track answers the same four questions differently:
 
@@ -16,16 +20,18 @@ Every track answers the same four questions differently:
 
 ## At a glance
 
-| | `claude-container` | `eve` | `harness` |
-| --- | --- | --- | --- |
-| The agent is | the Claude Agent SDK | a directory of files you author | an existing product, driven from code |
-| Loop owner | Claude Code | eve's default harness | Claude Code / Codex / Pi |
-| Sandbox | a Docker container this repo starts | eve's backend (Docker locally, Vercel in prod) | Vercel Sandbox — **required** |
-| Tools | Claude Code's built-ins + skills | built-ins + your `defineTool`s | the harness's native tools |
-| Custom skills | `SKILL.md` folders, mounted read-only | `agent/skills/<name>/SKILL.md` | the harness's own mechanism |
-| Runs offline | yes | yes (Docker backend) | no |
-| Production | any Docker host, OpenShift, a VPS | `eve deploy` → Vercel | Vercel |
-| Maturity | Agent SDK is stable | eve 0.63.0, preview | packages marked **experimental** |
+| | `claude-container` | `codex-container` | `eve` | `harness` |
+| --- | --- | --- | --- | --- |
+| Status | **built, verified** | **built, verified up to the model** | design | design |
+| The agent is | the Claude Agent SDK | the Codex SDK | a directory of files you author | an existing product, driven from code |
+| Loop owner | Claude Code | Codex CLI | eve's default harness | Claude Code / Codex / Pi |
+| Sandbox | a Docker container this repo starts | the same container | eve's backend (Docker locally, Vercel in prod) | Vercel Sandbox — **required** |
+| Tools | Claude Code's built-ins + skills | shell, apply_patch, web search + skills | built-ins + your `defineTool`s | the harness's native tools |
+| Custom skills | `SKILL.md` folders, mounted read-only | the same folders, read by Codex | `agent/skills/<name>/SKILL.md` | the harness's own mechanism |
+| Credentials | Anthropic key, or Foundry / Bedrock / Vertex | `CODEX_API_KEY` or a ChatGPT login | per model provider | Vercel + the harness's own |
+| Runs offline | yes | yes | yes (Docker backend) | no |
+| Production | any Docker host, OpenShift, a VPS | the same | `eve deploy` → Vercel | Vercel |
+| Maturity | Agent SDK is stable | SDK 0.x, pinned exactly | eve 0.63.0, preview | packages marked **experimental** |
 
 ## `claude-container` — you own the container
 
@@ -44,6 +50,56 @@ Isolation, as configured: all capabilities dropped, uid 1000, `no-new-privileges
 and CPU ceilings, a pid limit, a `noexec` tmpfs, an isolated bridge network, and no Docker
 socket. Good against accidents, not against a determined adversary — for that, see
 [gVisor](https://gvisor.dev) or a microVM.
+
+## `codex-container` — the same container, OpenAI's agent
+
+Built on 2026-09-22 to answer a narrower question: is the container track tied to Claude,
+or does another vendor's coding agent drop into the same shape? It drops in. The
+orchestrator, the terminal, the file tree and the editor are unchanged; the track is one
+image (`images/runner-codex`), one translator, one row in the orchestrator's `TRACKS`
+table and two entries in the model picker.
+
+**Choose it when** the constraint is the same as for `claude-container` — your own
+hardware, no Vercel — but the model has to be OpenAI's, natively, without a translation
+gateway.
+
+What was measured, rather than assumed:
+
+- **Codex's own sandbox does not start inside a Docker container.** Codex sandboxes
+  commands with bubblewrap, which needs unprivileged user namespaces, and Docker's default
+  seccomp profile denies them. `read-only` and `workspace-write` both fail every command
+  with `bwrap: No permissions to create a new namespace` — with this repo's hardening and
+  with Docker's defaults alike. Only `danger-full-access` runs, so the track uses it and
+  the container is the boundary, exactly as for Claude. `--security-opt seccomp=unconfined`
+  makes Codex's sandbox work (`read-only` then really refuses writes), but only by
+  weakening the container around it. Not worth the trade.
+- **One process per turn.** The SDK runs `codex exec --experimental-json` for each turn and
+  resumes the thread from `$CODEX_HOME/sessions`, so each turn pays the CLI startup (about
+  2 s) and the state directory has to be a volume. The Claude runner keeps one subprocess
+  alive for the whole session.
+- **Text does not stream.** `codex exec` reports an agent message when it is complete; the
+  answer appears whole. The translator handles partial updates in case a release adds them.
+- **No approval channel.** `codex exec` cannot ask; the track runs with
+  `approvalPolicy: "never"` and reports `permissionPrompts: false`, so the UI shows no
+  approval cards. The Codex app-server protocol has approvals and streaming deltas, and is
+  the upgrade path if either matters.
+- **Skills work unchanged.** Codex reads user skills from `~/.agents/skills`; the
+  entrypoint links the `/skills` mount there. `codex debug prompt-input` inside the
+  container shows all four repo skills in the model-visible prompt — checked without a
+  model call.
+- **Credentials sit in the container.** Either `CODEX_API_KEY` in the environment, or a
+  ChatGPT login copied from `CODEX_AUTH_FILE` into the session volume. Under
+  `danger-full-access` the code the agent runs can read either — the same exposure as an
+  Anthropic key in the Claude track. The real fix is a proxy that injects the credential
+  outside the sandbox, which is what Docker Sandboxes does. A ChatGPT login has one more
+  catch: a refresh inside the container rotates the token and can sign the host out.
+
+Verified end to end on 2026-09-22 up to the model: the session starts, skills and the
+file API work, the terminal runs as uid 1000, and a prompt reaches OpenAI with the mounted
+login — which answered with the account's usage limit. That error arrives in the UI as
+one `error` and one `finish`, which is the failure path working. A successful turn
+could not be recorded that day; `scripts/verify-codex-translator.mjs` replays the SDK's
+event shapes through the translator offline until one can.
 
 ## `eve` — the agent is files
 
@@ -95,8 +151,9 @@ const agent = new HarnessAgent({
 
 ## Choosing
 
-- **Deploying to OpenShift, a VPS, or a customer's own hardware** → `claude-container`. It is
-  the only track that does not assume Vercel.
+- **Deploying to OpenShift, a VPS, or a customer's own hardware** → `claude-container`, or
+  `codex-container` when the model is OpenAI's. They are the tracks that do not assume
+  Vercel.
 - **Deploying to Vercel, and you want your own tools** → `eve`.
 - **You want Claude Code's exact behaviour and Vercel is fine** → `harness`.
 - **You do not know yet** → start on `claude-container`. Its protocol boundary means moving a

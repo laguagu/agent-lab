@@ -4,10 +4,11 @@ Run sandboxed agents locally, three different ways, and compare them side by sid
 browser UI on top of all of them: conversation, file tree, Monaco editor, diff view and a
 terminal into the same sandbox.
 
-The three ways — the **tracks** — are `claude-container`, `eve` and `harness`. Read
-`docs/00-tracks.md` before working on any of them; it records what each one costs and the
-one finding that constrains the design (the `harness` track is not self-hostable today).
-Only `claude-container` is built.
+The ways — the **tracks** — are `claude-container`, `codex-container`, `eve` and
+`harness`. Read `docs/00-tracks.md` before working on any of them; it records what each one
+costs and the findings that constrain the design (the `harness` track is not self-hostable
+today; Codex's own sandbox cannot start inside Docker). The two container tracks are built.
+`docs/01-options.md` surveys the options beyond this lab's shape.
 
 **If the task is to build a sandboxed agent that executes code — rather than to extend this
 lab — read `skills/code-agent-sandboxes/SKILL.md` first.** It carries the decision and the
@@ -20,7 +21,8 @@ skill does not auto-trigger when this repo is merely open in an editor.
 ```bash
 bun run sync-skills        # materialise your skill library into .skills-cache/ (run first)
 bun run build:protocol     # shared protocol -> dist/
-bun run build:image        # runner image
+bun run build:image        # runner image, claude-container
+bun run build:image:codex  # runner image, codex-container
 bun run dev:orchestrator   # port 8080, on the host (needs Docker access)
 bun run dev:web            # port 3000
 ```
@@ -34,7 +36,8 @@ container discovered. Exit 0 means the whole chain works.
 | --- | --- |
 | `packages/protocol` | `RunnerEvent` / `RunnerCommand`. **The most important interface in the project** — it is what separates a track from the UI. Zero dependencies. |
 | `images/runner-claude` | The `claude-container` track. Node 24 + `@anthropic-ai/claude-agent-sdk`. Further tracks go in sibling `images/runner-<track>/` directories. |
-| `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. Track-agnostic. |
+| `images/runner-codex` | The `codex-container` track. Node 24 + `@openai/codex-sdk`, pinned exactly. `fs-api.ts` and `workspace-setup.ts` are copies of runner-claude's — keep them identical until a third track justifies a shared package. |
+| `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. Knows a track only as a row in `TRACKS`: image, state directory, default model, credentials. |
 | `apps/web` | Next.js 16. UI only — it does not know which track sits in the container. |
 | `skills/` | The skills this repo ships. Committed, so they travel with the source. `code-agent-sandboxes` is the one to read when the task is to *build* a sandboxed code-executing agent rather than extend this lab. |
 | `docs/` | The comparison between tracks. This is the lab's actual output. |
@@ -45,11 +48,11 @@ behaves identically on Windows and Linux.
 
 ## Hard rules
 
-1. **Build the runner image with npm, not bun.** The native `claude` binary (392 MB) ships
+1. **Build the runner images with npm, not bun.** The native `claude` binary (392 MB) ships
    as the optional dependency `@anthropic-ai/claude-agent-sdk-linux-x64`. **Bun installs
    neither it nor the peer dependencies** — verified 2026-08-25 — and the run then dies with
    `spawn ENOENT`. npm installs both. The Dockerfile asserts the binary exists; do not
-   remove that check.
+   remove that check. The Codex image asserts `@openai/codex-linux-x64` the same way.
 2. **Never bundle the runner.** `bun build` breaks the SDK's CLI discovery: `import.meta.url`
    resolves to `/$bunfs/root/`, where `cli.js` does not physically exist.
 3. **No parameter properties in runner source.** Node runs TypeScript in strip-only mode,
@@ -66,9 +69,18 @@ behaves identically on Windows and Linux.
    `tar -ch | tar -x` pair. **robocopy will not do** — it copies symlinks as symlinks.
 7. **The UI does not know which engine runs in the container.** Everything travels through
    `packages/protocol`. A second engine implements the same contract, and the UI degrades
-   according to the `capabilities` field.
+   according to the `capabilities` field. The one place the UI names a track is when it
+   starts a session: `lib/models.ts` says which track runs each model. Rendering never
+   branches on it — the Codex track needed no change to a single component.
 8. **Never mount `.env` files into the workspace.** The agent reads anything under
    `/workspace`, and skills are arbitrary code.
+9. **Codex gets `CODEX_API_KEY`, never `OPENAI_API_KEY`.** The latter is the gateway's
+   provider credential. A ChatGPT login is opt-in through `CODEX_AUTH_FILE` and is never
+   mounted by default.
+10. **The codex-container track runs `danger-full-access` on purpose.** Codex's bubblewrap
+   sandbox needs unprivileged user namespaces, which Docker's default seccomp profile
+   denies: `read-only` and `workspace-write` fail every command. Measured 2026-09-22. Do
+   not "harden" it back to `workspace-write`.
 
 ## Two non-obvious implementation details
 

@@ -19,8 +19,10 @@ The protocol is a discriminated union, so the compiler finds every site for you.
    `commands.ts` (browser → runner). Document the field that is not obvious.
 2. `bun run build:protocol` — the package is compiled, not consumed as source, because Node
    refuses to strip types inside `node_modules`.
-3. Emit it in `images/runner-claude/src/translate.ts`. **This is the only file allowed to read
-   Claude-specific shapes.** If your new event needs SDK knowledge, it belongs here.
+3. Emit it in each track's translator — `images/runner-claude/src/translate.ts` and
+   `images/runner-codex/src/translate.ts`. **These are the only files allowed to read
+   engine-specific shapes.** If your new event needs SDK knowledge, it belongs there. A
+   track whose engine cannot produce the event simply never emits it.
 4. Handle it in `apps/web/lib/use-runner-session.ts`. If it produces a conversation part,
    add its type to `PART_EVENTS` — otherwise it silently creates an empty turn.
 5. Render it in `apps/web/components/agent/conversation.tsx`.
@@ -30,15 +32,23 @@ event. `RunnerClient.request()` already pairs them.
 
 ## Adding a track
 
-A track is one way of running a sandboxed agent — see `docs/00-tracks.md` for the three that
+A track is one way of running a sandboxed agent — see `docs/00-tracks.md` for the ones that
 exist. The contract it implements is: dial out to the orchestrator over WebSocket, accept a
-`SessionSpec`, emit `RunnerEvent`s, accept `RunnerCommand`s.
+`SessionSpec`, emit `RunnerEvent`s, accept `RunnerCommand`s. `images/runner-codex` is the
+worked example of adding one; it took these steps and no others:
 
-1. New image under `images/runner-<track>/` with its own `translate.ts`.
+1. New image under `images/runner-<track>/` with its own `translate.ts`, and a
+   `build:image:<track>` script.
 2. Report honest `capabilities` in `session.init`. The UI hides what an engine cannot do —
    `capabilities.pty: false` removes the terminal tab rather than breaking it.
-3. Do not touch the orchestrator or the web app. If you need to, the seam is in the wrong
-   place and the protocol is what should change.
+3. Add the track to `RunnerKind` and `CONTAINER_RUNNERS` in the protocol.
+4. One row in the orchestrator's `TRACKS` table: image, state directory, default model,
+   and the credentials the runner may see — nothing else.
+5. Its models in `apps/web/lib/models.ts`, each with `runner` set.
+
+If a track needs more than that from the orchestrator or the web app — a new component, a
+branch on the track name — the seam is in the wrong place and the protocol is what should
+change.
 
 ## Adding a workspace panel
 
@@ -51,9 +61,12 @@ HTTP endpoint — the runner publishes no ports.
 ## Before you finish
 
 ```bash
-bun run typecheck                    # all four packages
-bun run build:image                  # if images/runner changed
+bun run typecheck                    # every package
+bun run build:image                  # if images/runner-claude changed
+bun run build:image:codex            # if images/runner-codex changed
 node scripts/verify-session.mjs      # the chain still works end to end
+RUNNER=codex-container node scripts/verify-session.mjs
+node scripts/verify-codex-translator.mjs   # if the Codex translator changed
 ```
 
 `verify-session` exits 0 only when a container starts, dials back, reports its skills and

@@ -1,29 +1,35 @@
 # Agent Lab
 
-Run sandboxed agents locally, three different ways, and compare them side by side.
+Run sandboxed agents locally, several different ways, and compare them side by side.
 
 An agent that decides for itself — writes a script, runs it, reads the error, fixes it — has
 to run somewhere that a mistake cannot hurt. There is no single right answer to *where*.
-This repository builds the three serious ones and puts the same browser UI on all of them:
+This repository builds the serious ones and puts the same browser UI on all of them:
 conversation, file tree, editor, diff and a terminal into the same sandbox.
 
 | Track | The agent is | Sandbox | Production |
 | --- | --- | --- | --- |
 | **`claude-container`** | the Claude Agent SDK | a Docker container this repo starts | any Docker host, OpenShift, a VPS |
+| **`codex-container`** | OpenAI Codex, through the Codex SDK | the same container | the same |
 | **`eve`** | a directory of files you author | eve's backend | `eve deploy` → Vercel |
 | **`harness`** | Claude Code / Codex, driven from code | Vercel Sandbox, **required** | Vercel |
 
-Read [docs/00-tracks.md](docs/00-tracks.md) before picking one. The short version: only
-`claude-container` runs without an external service, and the `harness` track cannot be
+Read [docs/00-tracks.md](docs/00-tracks.md) before picking one. The short version: the two
+container tracks run without an external service, and the `harness` track cannot be
 self-hosted today because its adapter needs a network sandbox with an exposed port and the
 only documented provider is Vercel's.
 
-Status: `claude-container` is built and verified end to end. `eve` and `harness` are next —
-see [Roadmap](#roadmap).
+[docs/01-options.md](docs/01-options.md) widens the question beyond this lab: vendor-hosted
+agent loops (Claude Managed Agents, whose self-hosted worker fits OpenShift), the OpenAI
+Agents SDK's sandbox providers, and Docker's microVM sandboxes — with what was tried here
+and what was not.
+
+Status: `claude-container` is built and verified end to end. `codex-container` is built and
+verified up to the model call. `eve` and `harness` are next — see [Roadmap](#roadmap).
 
 The repo is also meant to be handed to an agent as context when the task is *build me a
-sandboxed agent that runs code*. Two files carry that: `docs/00-tracks.md` for what has been
-measured here, and [`skills/code-agent-sandboxes`](skills/code-agent-sandboxes/SKILL.md) for
+sandboxed agent that runs code*. Three files carry that: `docs/00-tracks.md` for what has
+been measured here, `docs/01-options.md` for the wider field, and [`skills/code-agent-sandboxes`](skills/code-agent-sandboxes/SKILL.md) for
 the decision itself — which framework, which sandbox, and which deployment target, including
 the constraints that rule most options out on OpenShift.
 
@@ -60,6 +66,7 @@ bun install
 bun run sync-skills        # optional: overlay your own skill library
 bun run build:protocol
 bun run build:image        # ~1 GB, includes the native Claude Code binary
+bun run build:image:codex  # optional: the codex-container track
 cp .env.example .env       # add an API key
 bun run dev:orchestrator   # port 8080
 bun run dev:web            # port 3000
@@ -79,7 +86,7 @@ That merges both into `.skills-cache/` (gitignored), which the orchestrator moun
 
 ## Verifying
 
-Four scripts, no test framework, each exits 0 on success:
+Five scripts, no test framework, each exits 0 on success:
 
 | Script | What it proves |
 | --- | --- |
@@ -87,6 +94,9 @@ Four scripts, no test framework, each exits 0 on success:
 | `node scripts/verify-clone.mjs <repo>` | a public repo lands in the workspace |
 | `node scripts/verify-turn.mjs` | the agent runs Bash/Read/Write and edits files |
 | `node scripts/verify-terminal.mjs <sessionId>` | terminal over `docker exec`, running as uid 1000 |
+| `node scripts/verify-codex-translator.mjs` | the Codex event mapping, offline — no model, no container |
+
+`RUNNER=codex-container` points `verify-session` and `verify-turn` at the Codex track.
 
 ## Models
 
@@ -103,6 +113,11 @@ letting the request fail somewhere invisible.
 
 Provider credentials live only in the gateway container, never inside a runner. A skill is
 arbitrary code, so it must not be able to read the keys that pay for it.
+
+The `codex-container` track needs no gateway — it speaks OpenAI natively. It takes either
+`CODEX_API_KEY` or, opt-in, a ChatGPT login: `CODEX_AUTH_FILE=~/.codex/auth.json`. Both end
+up inside the container, readable by the code the agent runs, so use a scoped key for
+anything shared.
 
 > **Security:** LiteLLM 1.82.7 and 1.82.8 shipped credential-stealing malware
 > ([PyPI, 2026-03-24](https://github.com/BerriAI/litellm/issues/24518)). The compose file
@@ -122,6 +137,8 @@ adversary. For stronger isolation see [gVisor](https://gvisor.dev) or a microVM.
 
 | | |
 | --- | --- |
+| A successful Codex turn | Recorded and replayed in `verify-codex-translator`. Blocked on 2026-09-22 by the plan's usage limit. |
+| Managed Agents worker | The self-hosted worker as a track: outbound-only, no KVM — the best fit found for OpenShift. See `docs/01-options.md`. |
 | `eve` track | The agent-as-files engine, wired to the same protocol. Gives the `eve deploy` path. |
 | `harness` track | `HarnessAgent` + `claudeCode` on Vercel Sandbox. Needs a Vercel login; cannot run offline. |
 | Permission flow | `canUseTool` → `permission.request` → approval card. Protocol and UI are ready; no runner sends requests yet. This is the missing piece for letting an agent decide and execute unsupervised. |

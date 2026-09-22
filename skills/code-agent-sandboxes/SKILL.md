@@ -1,6 +1,6 @@
 ---
 name: code-agent-sandboxes
-description: Choose how to run an agent that writes and executes code — which framework, which Python/bash sandbox, and which deployment target. Use whenever a task involves an agent running generated code, a `run_python` or code-interpreter tool, a data-analysis agent, or a coding agent that edits files and runs tests, and whenever the question is where that code should execute — CSC Rahti/OpenShift, Vercel, a VPS, a customer's own hardware, or a hosted sandbox API. Triggers on "sandbox agent", "aja python koodia", "koodiagentti", "code interpreter", "run_python", "E2B", "Daytona", "Modal", "Vercel Sandbox", "code execution tool", "OpenHands", "smolagents", "agentti joka ajaa koodia", "miten ajan agenttia kontissa", and on any question of the form "which framework should I use for an agent that ...". Also use when reviewing an existing agent that executes code, to check its isolation and credential exposure.
+description: Choose how to run an agent that writes and executes code — which framework, which Python/bash sandbox, and which deployment target. Use whenever a task involves an agent running generated code, a `run_python` or code-interpreter tool, a data-analysis agent, or a coding agent that edits files and runs tests, and whenever the question is where that code should execute — CSC Rahti/OpenShift, Vercel, a VPS, a customer's own hardware, or a hosted sandbox API. Triggers on "sandbox agent", "aja python koodia", "koodiagentti", "code interpreter", "run_python", "E2B", "Daytona", "Modal", "Vercel Sandbox", "Claude Managed Agents", "Codex SDK", "SandboxAgent", "Docker Sandboxes", "code execution tool", "OpenHands", "smolagents", "agentti joka ajaa koodia", "miten ajan agenttia kontissa", and on any question of the form "which framework should I use for an agent that ...". Also use when reviewing an existing agent that executes code, to check its isolation and credential exposure.
 ---
 
 # Running an agent that executes code
@@ -25,6 +25,7 @@ server-side execution tool covers the job, because it removes the entire problem
 | Route | Where the code runs | Good for | Rules it out |
 | --- | --- | --- | --- |
 | **Anthropic `code_execution`** | Anthropic's container, server-side | Data analysis, chart generation, file transforms | Code must reach your private network or DB |
+| **Claude Managed Agents** | Anthropic's cloud sandbox, *or* a worker on your own infrastructure | A whole coding agent — bash, file tools, web, MCP — with no loop to write | Zero Data Retention or HIPAA required; the model must run outside Anthropic |
 | **OpenAI code interpreter** | OpenAI's container | Same | Same |
 | **Hosted sandbox API** (E2B, Daytona, Modal, Vercel Sandbox) | vendor's microVM/container, your orchestration | Long sessions, custom images, pip installs | No egress allowed from your host, or data cannot leave your jurisdiction |
 | **Your own container** | your pod/VM | Data residency, private network access, air-gapped | You now own lifecycle, isolation and cleanup |
@@ -41,6 +42,14 @@ Two facts that change the answer more often than expected:
   REPL-persistence tool version is used, and even then only inside one conversation. Anything
   the user needs has to be pulled out of the response and stored. Plan the extraction, not
   just the execution.
+
+Managed Agents changes more answers than any other row. Its **self-hosted sandbox** is a
+worker process that claims work from Anthropic's queue over **outbound HTTPS only** and runs
+the tool calls where it sits — no inbound port, no `/dev/kvm`, no privileged mode. Files and
+processes stay in your perimeter; the model loop, and therefore the tool inputs and outputs,
+still go to Anthropic. Verify at
+[platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)
+— it is a beta.
 
 If none of these fit, keep going.
 
@@ -67,6 +76,10 @@ but confirm it against the cluster before designing around it.
 Note what is still open on Rahti: **egress works**, so calling E2B, Daytona or Modal from a
 Rahti pod is perfectly viable. The question then becomes whether the data may leave CSC.
 
+Egress-only is also exactly what the Managed Agents self-hosted worker needs. A Deployment
+running the worker — or a poller that starts one Job per session — fits inside every Rahti
+restriction above. It is the only fully managed agent loop found that does.
+
 ## Step 3 — pick the framework, not the biggest one
 
 Three shapes, and the mistake is nearly always reaching for the heaviest:
@@ -77,14 +90,18 @@ Kubernetes sandboxes. Choose it when you want a *product* for engineers to use, 
 that you now operate a multi-component stack whose sandbox image version must track the app
 version.
 
-**A framework you build a loop with** — the AI SDK's `ToolLoopAgent` (TypeScript) or
-smolagents' `CodeAgent` (Python, writes Python instead of JSON tool calls). Choose this when
+**A framework you build a loop with** — the OpenAI Agents SDK's `SandboxAgent` (Python and
+TypeScript), the AI SDK's `ToolLoopAgent` (TypeScript) or smolagents' `CodeAgent` (Python,
+writes Python instead of JSON tool calls). `SandboxAgent` is the one where the sandbox is
+a run-time choice: a local `DockerSandboxClient` in development, a hosted provider (E2B,
+Modal, Daytona, Cloudflare, Vercel, Blaxel, Runloop) in production, same agent code. Choose this when
 the agent is a *feature inside your application* rather than a standalone product. For most
 "my app needs an agent that can run Python" tasks, this is the right size, and the whole
 implementation is one tool definition plus a sandbox client.
 
-**An existing harness, driven from code** — `HarnessAgent` with the Claude Code or Codex
-adapter gives you that product's exact behaviour from TypeScript. The catch is structural:
+**An existing harness, driven from code** — the vendor's own SDK in a container you start
+(Claude Agent SDK, Codex SDK; both run in this repo), or `HarnessAgent` with the Claude
+Code or Codex adapter, which gives you that product's exact behaviour from TypeScript. The catch is structural:
 the Claude Code adapter runs a bridge inside the sandbox and streams over an exposed port, so
 it requires a network sandbox with open ports, and the documented provider is Vercel's. It is
 not self-hostable without writing a sandbox provider.
@@ -184,6 +201,11 @@ reprices often.
   OpenShift, managed Kubernetes without nested virtualisation, and most CI runners, it is
   unavailable — and the failure appears at runtime as a sandbox that will not start, not at
   design time.
+- **An agent CLI's own sandbox does not nest inside a container.** Codex sandboxes commands
+  with bubblewrap, which needs unprivileged user namespaces; Docker's default seccomp profile
+  denies them, so `read-only` and `workspace-write` fail every command inside a container.
+  Run it with `danger-full-access` and let the container be the boundary. Loosening seccomp
+  to make the inner sandbox work weakens the outer one. Measured in this repo, 2026-09-22.
 - **The Docker-socket pattern does not port to Kubernetes.** A design where the app spawns
   sibling containers must be rewritten to create Jobs through the API. This is usually one
   module, not a rewrite, if the session lifecycle was already behind an interface.
@@ -206,18 +228,20 @@ reprices often.
 This skill ships inside Agent Lab, so when it is read with the repo in context, check what
 exists before building anything:
 
-- `docs/00-tracks.md` is the concrete counterpart to Step 2 and Step 3 above — three ways of
-  running a sandboxed agent, with what each one costs. Read it before choosing a track.
+- `docs/00-tracks.md` is the concrete counterpart to Step 2 and Step 3 above — the ways of
+  running a sandboxed agent built or designed here, with what each one costs.
+- `docs/01-options.md` is the wider survey: vendor-hosted loops, sandbox providers, local
+  microVMs, and what was actually tried.
 - `packages/protocol` is the engine-agnostic contract. A new way of running an agent should
   implement `RunnerEvent` / `RunnerCommand` rather than grow its own UI; the browser UI,
   file tree, editor and terminal then work for free.
 - `services/orchestrator/src/docker.ts` is the session lifecycle behind an interface. A
   Kubernetes/OpenShift target is a sibling module here, not a rewrite.
-- `images/runner-claude` is a worked example of an engine that satisfies the contract.
+- `images/runner-claude` and `images/runner-codex` are two worked examples of an engine
+  that satisfies the contract — Claude Code and Codex in the same container shape.
 
-The repo is the lab; it is deliberately not a finished product. Only the
-`claude-container` track is built, so treat the other two as designs to be verified rather
-than as working code.
+The repo is the lab; it is deliberately not a finished product. The two container tracks
+are built; treat `eve` and `harness` as designs to be verified rather than as working code.
 
 ## Related skills
 
