@@ -1,15 +1,20 @@
 /**
- * Models the container can run.
+ * Models the container can run, and which track runs each one.
  *
- * The runner always speaks the Anthropic Messages format. Claude models therefore reach
- * their provider directly, while everything else has to pass through the LiteLLM gateway,
- * which translates the format. That is why each entry declares `viaGateway`: the picker
- * disables those options when the gateway is not running, instead of letting a request
- * fail somewhere the user cannot see it.
+ * The claude-container runner speaks the Anthropic Messages format. Claude models
+ * therefore reach their provider directly, while everything else has to pass through the
+ * LiteLLM gateway, which translates the format. That is why each entry declares
+ * `viaGateway`: the picker disables those options when the gateway is not running,
+ * instead of letting a request fail somewhere the user cannot see it.
  *
  * The `id` of a gateway model is a LiteLLM `model_name` alias from
  * `infra/litellm/config.yaml`, not a provider model id.
+ *
+ * Codex entries need no gateway: the codex-container track speaks OpenAI natively. Their
+ * `id` is a Codex model slug.
  */
+
+import type { ContainerRunner } from "@agent-lab/protocol";
 
 export type Provider = "anthropic" | "openai" | "google" | "azure";
 
@@ -19,6 +24,8 @@ export type ModelOption = {
   provider: Provider;
   /** Requires the LiteLLM gateway to be up. */
   viaGateway: boolean;
+  /** The track that runs this model. Defaults to claude-container. */
+  runner?: ContainerRunner;
   note?: string;
 };
 
@@ -56,6 +63,22 @@ export const MODELS: ModelOption[] = [
     viaGateway: false,
   },
   {
+    id: "gpt-5.5",
+    label: "GPT-5.5",
+    provider: "openai",
+    viaGateway: false,
+    runner: "codex-container",
+    note: "Codex CLI in the container",
+  },
+  {
+    id: "gpt-6-astra",
+    label: "GPT-6 Astra",
+    provider: "openai",
+    viaGateway: false,
+    runner: "codex-container",
+    note: "Codex CLI in the container",
+  },
+  {
     id: "gpt-azure",
     label: "GPT",
     provider: "azure",
@@ -80,4 +103,8 @@ export const DEFAULT_MODEL = MODELS[0].id;
 
 export function findModel(id: string): ModelOption | undefined {
   return MODELS.find((m) => m.id === id);
+}
+
+export function runnerOf(id: string): ContainerRunner {
+  return findModel(id)?.runner ?? "claude-container";
 }

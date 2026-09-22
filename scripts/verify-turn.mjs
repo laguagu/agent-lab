@@ -3,6 +3,8 @@
 
 const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
 const BASE = `http://localhost:${PORT}`;
+// Which track to start: claude-container (default) or codex-container.
+const RUNNER = process.env.RUNNER ?? "claude-container";
 const REPO = process.argv[2] ?? "https://github.com/octocat/Hello-World";
 const PROMPT =
   process.argv[3] ??
@@ -11,14 +13,14 @@ const PROMPT =
 const res = await fetch(`${BASE}/api/sessions`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ repoUrl: REPO, permissionMode: "bypassPermissions" }),
+  body: JSON.stringify({ runner: RUNNER, repoUrl: REPO, permissionMode: "bypassPermissions" }),
 });
 const body = await res.json();
 if (!res.ok) {
   console.log("SESSION FAIL", res.status, body);
   process.exit(1);
 }
-console.log(`session ${body.sessionId}, model ${body.spec.model}\n`);
+console.log(`session ${body.sessionId}, ${body.runner}, model ${body.spec.model}\n`);
 
 const ws = new WebSocket(`ws://localhost:${PORT}/ws/client?session=${body.sessionId}`);
 let text = "";

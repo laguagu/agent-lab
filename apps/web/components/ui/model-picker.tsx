@@ -91,6 +91,7 @@ export function ModelPicker({
                     <span className="block truncate">{m.label}</span>
                     <span className="block truncate text-muted">
                       {PROVIDER_LABEL[m.provider]}
+                      {m.runner === "codex-container" && " · Codex"}
                       {blocked && " · gateway offline"}
                     </span>
                   </span>

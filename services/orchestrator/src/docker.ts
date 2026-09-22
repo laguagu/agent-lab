@@ -18,7 +18,16 @@ const docker = new Docker();
 
 export type RunnerContainerSpec = {
   sessionId: string;
+  /** The track, e.g. "codex-container". Names the container. */
+  runner: string;
   token: string;
+  /**
+   * Where the engine keeps its own state — transcripts, threads, login. A per-session
+   * volume is mounted here: /home/node/.claude or /home/node/.codex.
+   */
+  stateDir: string;
+  /** Additional host paths, as `host:container:ro` bind strings. */
+  extraBinds?: string[];
   /** Host path mounted read-only at /skills. */
   skillsPath: string;
   /** WebSocket address the container uses to reach the orchestrator. */
@@ -51,7 +60,7 @@ export async function ensureNetwork(name: string): Promise<void> {
 function volumeNames(sessionId: string) {
   return {
     workspace: `agent-lab-ws-${sessionId}`,
-    claude: `agent-lab-claude-${sessionId}`,
+    state: `agent-lab-state-${sessionId}`,
   };
 }
 
@@ -78,14 +87,14 @@ export async function createRunner(
 
   const container = await docker.createContainer({
     Image: spec.image,
-    name: `agent-lab-runner-claude-${spec.sessionId}`,
+    name: `agent-lab-${spec.runner}-${spec.sessionId}`,
     Labels: { [LABEL_ROLE]: "runner", [LABEL_SESSION]: spec.sessionId },
     Env: env,
     WorkingDir: "/workspace",
     Tty: false,
     HostConfig: {
       // Hardening. The root fs cannot be read-only: the agent writes to its workspace,
-      // and ~/.claude needs to hold transcripts.
+      // and the state directory needs to hold transcripts.
       CapDrop: ["ALL"],
       SecurityOpt: ["no-new-privileges"],
       Memory: spec.memoryMb * 1024 * 1024,
@@ -94,8 +103,9 @@ export async function createRunner(
       PidsLimit: 256,
       Binds: [
         `${vols.workspace}:/workspace`,
-        `${vols.claude}:/home/node/.claude`,
+        `${vols.state}:${spec.stateDir}`,
         `${spec.skillsPath}:/skills:ro`,
+        ...(spec.extraBinds ?? []),
       ],
       Tmpfs: { "/tmp": "rw,nosuid,size=256m" },
       // The orchestrator owns the restart policy so cost and turns stay attributable.

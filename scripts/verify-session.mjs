@@ -3,11 +3,13 @@
 
 const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
 const BASE = `http://localhost:${PORT}`;
+// Which track to start: claude-container (default) or codex-container.
+const RUNNER = process.env.RUNNER ?? "claude-container";
 
 const res = await fetch(`${BASE}/api/sessions`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ permissionMode: "acceptEdits" }),
+  body: JSON.stringify({ runner: RUNNER, permissionMode: "acceptEdits" }),
 });
 const body = await res.json();
 if (!res.ok) {

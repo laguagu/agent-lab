@@ -1,10 +1,10 @@
 /**
- * The runner process. Runs inside the container alongside the agent and the workspace.
+ * The runner process for the codex-container track.
  *
- * The container publishes NO port. It dials out to the orchestrator over a WebSocket.
- * That removes port allocation entirely and behaves identically on Windows and Linux —
- * runners can sit on an internal network where only the orchestrator and the model
- * router are reachable.
+ * Same wiring as runner-claude: the container publishes no port and dials out to the
+ * orchestrator. What differs is the engine — turns run one at a time through the Codex
+ * SDK — and where session.init comes from: a scan of the skill mount rather than an
+ * engine control channel, because `codex exec` has none.
  */
 
 import { WebSocket } from "ws";
@@ -14,15 +14,17 @@ import {
   type RunnerEventBody,
   type SessionSpec,
 } from "@agent-lab/protocol";
-import { startAgent, type AgentSession } from "./agent.ts";
+import { startAgent, type CodexAgent } from "./agent.ts";
 import { WorkspaceFs } from "./fs-api.ts";
-import { cloneInto } from "./workspace-setup.ts";
+import { scanSkills } from "./skills.ts";
 import { Translator } from "./translate.ts";
+import { cloneInto } from "./workspace-setup.ts";
 
 const ORCHESTRATOR_WS = process.env.ORCHESTRATOR_WS ?? "ws://orchestrator:8080";
 const RUNNER_TOKEN = process.env.RUNNER_TOKEN ?? "";
 const SESSION_ID = process.env.SESSION_ID ?? "";
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR ?? "/workspace";
+const SKILLS_MOUNT = process.env.SKILLS_MOUNT ?? "/skills";
 
 if (!SESSION_ID || !RUNNER_TOKEN) {
   console.error("SESSION_ID and RUNNER_TOKEN are required.");
@@ -33,8 +35,10 @@ const fsApi = new WorkspaceFs(WORKSPACE_DIR);
 const translator = new Translator();
 
 let seq = 0;
-let agent: AgentSession | null = null;
-let pumping = false;
+let agent: CodexAgent | null = null;
+/** Turns run strictly one after another; a prompt sent mid-turn waits its place. */
+let queue: Promise<void> = Promise.resolve();
+let current: AbortController | null = null;
 
 const url = `${ORCHESTRATOR_WS}/ws/runner?session=${encodeURIComponent(SESSION_ID)}&token=${encodeURIComponent(RUNNER_TOKEN)}`;
 const ws = new WebSocket(url);
@@ -66,66 +70,10 @@ ws.on("message", async (raw) => {
     return;
   }
 
-  // The orchestrator sends the spec once, before any command.
   const maybeSpec = parsed as { type?: string; spec?: SessionSpec };
   if (maybeSpec.type === "spec" && maybeSpec.spec) {
     if (agent) return;
-    const spec = maybeSpec.spec;
-
-    // Clone BEFORE starting the agent so it sees the repo on the very first turn
-    // rather than an empty directory.
-    if (spec.repoUrl) {
-      emit({
-        type: "session.status",
-        status: "starting",
-        detail: `cloning ${spec.repoUrl}`,
-      });
-      const res = await cloneInto(spec.repoUrl, WORKSPACE_DIR);
-      if (res.ok) {
-        emit({ type: "file.tree-invalidated", root: "." });
-        emit({
-          type: "session.status",
-          status: "starting",
-          detail: `${res.files} entries from branch ${res.branch}`,
-        });
-      } else {
-        emit({
-          type: "error",
-          code: "sandbox_error",
-          message: `Clone failed: ${res.error}`,
-          retryable: true,
-        });
-      }
-    }
-
-    const session = startAgent(spec);
-    agent = session;
-    // Pump first, so the stream has a consumer when the subprocess comes up.
-    void pump(session);
-    void session
-      .warmup()
-      .then((info) => {
-        for (const body of translator.initFromControl({
-          agentSessionId: spec.sessionId,
-          model: spec.model,
-          cwd: spec.cwd,
-          permissionMode: spec.permissionMode,
-          skills: info.skills,
-          slashCommands: info.slashCommands,
-          tools: [],
-          ...(spec.repoUrl ? { repoUrl: spec.repoUrl } : {}),
-        })) {
-          emit(body);
-        }
-      })
-      .catch((err: unknown) => {
-        emit({
-          type: "error",
-          code: "sandbox_error",
-          message: `Agent failed to start: ${(err as Error)?.message ?? err}`,
-          retryable: false,
-        });
-      });
+    await begin(maybeSpec.spec);
     return;
   }
 
@@ -134,7 +82,7 @@ ws.on("message", async (raw) => {
 
 ws.on("close", () => {
   console.log("[runner] connection closed, shutting down");
-  agent?.close();
+  current?.abort();
   process.exit(0);
 });
 
@@ -142,40 +90,78 @@ ws.on("error", (err) => {
   console.error("[runner] websocket error:", err.message);
 });
 
-/** Pumps the SDK message stream through the translator into the WebSocket. */
-async function pump(session: AgentSession) {
-  if (pumping) return;
-  pumping = true;
-  try {
-    for await (const msg of session.messages) {
-      for (const body of translator.translate(msg)) emit(body);
+async function begin(spec: SessionSpec) {
+  if (spec.repoUrl) {
+    emit({ type: "session.status", status: "starting", detail: `cloning ${spec.repoUrl}` });
+    const res = await cloneInto(spec.repoUrl, WORKSPACE_DIR);
+    if (res.ok) {
+      emit({ type: "file.tree-invalidated", root: "." });
+      emit({
+        type: "session.status",
+        status: "starting",
+        detail: `${res.files} entries from branch ${res.branch}`,
+      });
+    } else {
+      emit({
+        type: "error",
+        code: "sandbox_error",
+        message: `Clone failed: ${res.error}`,
+        retryable: true,
+      });
     }
+  }
+
+  agent = startAgent(spec);
+  const skills = await scanSkills(SKILLS_MOUNT);
+  for (const body of translator.init({
+    agentSessionId: spec.sessionId,
+    model: spec.model,
+    cwd: spec.cwd,
+    permissionMode: spec.permissionMode,
+    sandboxMode: agent.sandboxMode,
+    skills,
+    ...(spec.repoUrl ? { repoUrl: spec.repoUrl } : {}),
+  })) {
+    emit(body);
+  }
+}
+
+async function runTurn(session: CodexAgent, text: string) {
+  const controller = new AbortController();
+  current = controller;
+  translator.beginTurn();
+  emit({ type: "session.status", status: "thinking" });
+  try {
+    for await (const ev of session.turn(text, controller.signal)) {
+      for (const body of translator.translate(ev)) emit(body);
+    }
+    // The stream can end without a turn event if codex exited early.
+    for (const body of translator.fail("codex exited without finishing the turn")) emit(body);
   } catch (err) {
-    emit({
-      type: "error",
-      code: "model_error",
-      message: String((err as Error)?.message ?? err),
-      retryable: false,
-    });
+    const bodies = controller.signal.aborted
+      ? translator.stopped()
+      : translator.fail(String((err as Error)?.message ?? err));
+    for (const body of bodies) emit(body);
   } finally {
-    pumping = false;
+    if (current === controller) current = null;
   }
 }
 
 async function handleCommand(cmd: RunnerCommand) {
   switch (cmd.type) {
-    case "prompt":
-      if (!agent) return;
-      emit({ type: "session.status", status: "thinking" });
-      agent.prompt(cmd.text);
+    case "prompt": {
+      const session = agent;
+      if (!session) return;
+      queue = queue.then(() => runTurn(session, cmd.text));
       return;
+    }
 
     case "interrupt":
-      await agent?.interrupt().catch(() => {});
+      current?.abort();
       return;
 
     case "stop":
-      agent?.close();
+      current?.abort();
       ws.close();
       return;
 
@@ -238,19 +224,16 @@ async function handleCommand(cmd: RunnerCommand) {
       }
       return;
 
-    case "ping":
-      return;
-
     default:
-      // The terminal is served by the orchestrator over docker exec,
-      // so pty.* commands never reach this point.
+      // ping needs no reply; pty.* is served by the orchestrator over docker exec;
+      // set-mode and set-model are not supported by this track yet.
       return;
   }
 }
 
 for (const sig of ["SIGTERM", "SIGINT"] as const) {
   process.on(sig, () => {
-    agent?.close();
+    current?.abort();
     ws.close();
     process.exit(0);
   });

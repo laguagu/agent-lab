@@ -13,15 +13,18 @@
 
 import { randomUUID, randomBytes } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { WebSocketServer, type WebSocket } from "ws";
-import type {
-  RunnerCommand,
-  RunnerEvent,
-  SessionSpec,
+import {
+  CONTAINER_RUNNERS,
+  type ContainerRunner,
+  type RunnerCommand,
+  type RunnerEvent,
+  type SessionSpec,
 } from "@agent-lab/protocol";
 import {
   createRunner,
@@ -67,7 +70,73 @@ function resolveSkillsPath(): string {
   if (existsSync(cache)) return cache;
   return path.join(repoRoot, "skills");
 }
-const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "agent-lab-runner-claude:latest";
+/**
+ * What differs between tracks at the container level: the image, where the engine keeps
+ * its state, the default model, and which credentials it may see. The lifecycle, the
+ * socket and the terminal are shared.
+ */
+type Track = {
+  image: string;
+  stateDir: string;
+  defaultModel: string;
+  /** Model routing and keys, passed through as-is. A runner never sees any other. */
+  env: Record<string, string | undefined>;
+  extraBinds: string[];
+};
+
+const TRACKS: Record<ContainerRunner, Track> = {
+  "claude-container": {
+    image: process.env.RUNNER_IMAGE ?? "agent-lab-runner-claude:latest",
+    stateDir: "/home/node/.claude",
+    defaultModel: process.env.AGENT_MODEL ?? "claude-sonnet-5",
+    env: {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
+      CLAUDE_CODE_USE_FOUNDRY: process.env.CLAUDE_CODE_USE_FOUNDRY,
+      ANTHROPIC_FOUNDRY_API_KEY: process.env.ANTHROPIC_FOUNDRY_API_KEY,
+      ANTHROPIC_FOUNDRY_RESOURCE: process.env.ANTHROPIC_FOUNDRY_RESOURCE,
+      CLAUDE_CODE_USE_BEDROCK: process.env.CLAUDE_CODE_USE_BEDROCK,
+      CLAUDE_CODE_USE_VERTEX: process.env.CLAUDE_CODE_USE_VERTEX,
+    },
+    extraBinds: [],
+  },
+  "codex-container": {
+    image: process.env.RUNNER_CODEX_IMAGE ?? "agent-lab-runner-codex:latest",
+    stateDir: "/home/node/.codex",
+    defaultModel: process.env.CODEX_MODEL ?? "gpt-5.5",
+    // Deliberately CODEX_API_KEY and not OPENAI_API_KEY: the latter belongs to the
+    // LiteLLM gateway, and forwarding it here would put a gateway credential in a runner.
+    env: {
+      CODEX_API_KEY: process.env.CODEX_API_KEY,
+      CODEX_SANDBOX_MODE: process.env.CODEX_SANDBOX_MODE,
+    },
+    extraBinds: codexAuthBinds(),
+  },
+};
+
+/**
+ * A ChatGPT login for the codex-container track — opt-in, never automatic.
+ *
+ * The file is mounted read-only and the entrypoint copies it into the session's own
+ * volume, because Codex rewrites it on token refresh. Code the agent runs can read that
+ * copy, exactly as it could read an API key in its environment.
+ */
+function codexAuthBinds(): string[] {
+  const raw = process.env.CODEX_AUTH_FILE;
+  if (!raw) return [];
+  const file = path.resolve(raw.replace(/^~(?=$|[\\/])/, os.homedir()));
+  if (!existsSync(file)) {
+    console.warn(`[orchestrator] CODEX_AUTH_FILE not found: ${file}`);
+    return [];
+  }
+  return [`${file}:/run/secrets/codex-auth.json:ro`];
+}
+
+function isContainerRunner(value: unknown): value is ContainerRunner {
+  return CONTAINER_RUNNERS.includes(value as ContainerRunner);
+}
+
 const RUNNER_NETWORK = process.env.RUNNER_NETWORK ?? "agent-lab-net";
 const RUNNER_MEMORY_MB = Number(process.env.RUNNER_MEMORY_MB ?? 2048);
 const RUNNER_CPUS = Number(process.env.RUNNER_CPUS ?? 2);
@@ -109,7 +178,9 @@ app.get("/health", async (c) => {
     docker,
     gateway,
     sessions: listSessions().length,
-    image: RUNNER_IMAGE,
+    images: Object.fromEntries(
+      Object.entries(TRACKS).map(([runner, t]) => [runner, t.image]),
+    ),
     skillsPath: SKILLS_HOST_PATH,
   });
 });
@@ -146,15 +217,26 @@ app.post("/api/sessions", async (c) => {
     );
   }
 
-  const body: Partial<SessionSpec> = await c.req
-    .json<Partial<SessionSpec>>()
-    .catch(() => ({}) as Partial<SessionSpec>);
+  type CreateBody = Partial<SessionSpec> & { runner?: string };
+  const body: CreateBody = await c.req
+    .json<CreateBody>()
+    .catch(() => ({}) as CreateBody);
+
+  const runner = body.runner ?? "claude-container";
+  if (!isContainerRunner(runner)) {
+    return c.json(
+      { error: `Unknown runner "${runner}". Available: ${CONTAINER_RUNNERS.join(", ")}.` },
+      400,
+    );
+  }
+  const track = TRACKS[runner];
+
   const sessionId = randomUUID().slice(0, 12);
   const token = randomBytes(24).toString("hex");
 
   const spec: SessionSpec = {
     sessionId,
-    model: body.model ?? process.env.AGENT_MODEL ?? "claude-sonnet-5",
+    model: body.model ?? track.defaultModel,
     permissionMode: body.permissionMode ?? "acceptEdits",
     skills: body.skills ?? "all",
     maxTurns: body.maxTurns ?? Number(process.env.AGENT_MAX_TURNS ?? 40),
@@ -165,37 +247,30 @@ app.post("/api/sessions", async (c) => {
     ...(body.resume ? { resume: body.resume } : {}),
   };
 
-  const session = createSession(spec, token);
+  createSession(spec, token, runner);
 
   try {
     await ensureNetwork(RUNNER_NETWORK);
     await createRunner({
       sessionId,
+      runner,
       token,
+      stateDir: track.stateDir,
+      extraBinds: track.extraBinds,
       skillsPath: SKILLS_HOST_PATH,
       orchestratorWs: RUNNER_CALLBACK_WS,
-      image: RUNNER_IMAGE,
+      image: track.image,
       memoryMb: RUNNER_MEMORY_MB,
       cpus: RUNNER_CPUS,
       network: RUNNER_NETWORK,
-      env: {
-        // Model routing. A runner never sees any key beyond these.
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-        ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
-        ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
-        CLAUDE_CODE_USE_FOUNDRY: process.env.CLAUDE_CODE_USE_FOUNDRY,
-        ANTHROPIC_FOUNDRY_API_KEY: process.env.ANTHROPIC_FOUNDRY_API_KEY,
-        ANTHROPIC_FOUNDRY_RESOURCE: process.env.ANTHROPIC_FOUNDRY_RESOURCE,
-        CLAUDE_CODE_USE_BEDROCK: process.env.CLAUDE_CODE_USE_BEDROCK,
-        CLAUDE_CODE_USE_VERTEX: process.env.CLAUDE_CODE_USE_VERTEX,
-      },
+      env: track.env,
     });
   } catch (err) {
     removeSession(sessionId);
     return c.json({ error: String((err as Error).message) }, 500);
   }
 
-  return c.json({ sessionId, spec });
+  return c.json({ sessionId, runner, spec });
 });
 
 app.delete("/api/sessions/:id", async (c) => {
@@ -210,6 +285,9 @@ app.delete("/api/sessions/:id", async (c) => {
 const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[orchestrator] http://localhost:${info.port}`);
   console.log(`[orchestrator] skills: ${SKILLS_HOST_PATH}`);
+  for (const [runner, t] of Object.entries(TRACKS)) {
+    console.log(`[orchestrator] ${runner}: ${t.image}`);
+  }
   console.log(`[orchestrator] container callback: ${RUNNER_CALLBACK_WS}`);
 });
 

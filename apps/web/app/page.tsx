@@ -13,7 +13,7 @@ import {
   type SkillSummary,
 } from "@/lib/api";
 import { ModelPicker } from "@/components/ui/model-picker";
-import { DEFAULT_MODEL } from "@/lib/models";
+import { DEFAULT_MODEL, runnerOf } from "@/lib/models";
 import { cn } from "@/lib/cn";
 
 const EXAMPLES = [
@@ -53,6 +53,7 @@ export default function StartPage() {
       try {
         const { sessionId } = await createSession({
           model,
+          runner: runnerOf(model),
           ...(repoUrl.trim() ? { repoUrl: repoUrl.trim() } : {}),
         });
         router.push(`/s/${sessionId}`);

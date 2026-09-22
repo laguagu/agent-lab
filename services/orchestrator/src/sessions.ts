@@ -13,6 +13,7 @@
 
 import type { WebSocket } from "ws";
 import type {
+  ContainerRunner,
   RunnerEvent,
   RunnerEventBody,
   SessionSpec,
@@ -25,6 +26,7 @@ export type SessionState = "starting" | "ready" | "stopped" | "error";
 export type Session = {
   id: string;
   token: string;
+  runner: ContainerRunner;
   spec: SessionSpec;
   state: SessionState;
   createdAt: number;
@@ -54,10 +56,15 @@ function repoTitle(repoUrl?: string): string {
   return parts.join("/") || "Workspace";
 }
 
-export function createSession(spec: SessionSpec, token: string): Session {
+export function createSession(
+  spec: SessionSpec,
+  token: string,
+  runner: ContainerRunner,
+): Session {
   const s: Session = {
     id: spec.sessionId,
     token,
+    runner,
     spec,
     state: "starting",
     createdAt: Date.now(),
@@ -81,6 +88,7 @@ export function listSessions() {
       id: s.id,
       title: s.title,
       state: s.state,
+      runner: s.runner,
       createdAt: s.createdAt,
       model: s.spec.model,
       repoUrl: s.spec.repoUrl,

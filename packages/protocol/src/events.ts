@@ -9,7 +9,12 @@
  * resend (`?since=<seq>`).
  */
 
-export type RunnerKind = "claude-container" | "openai-host" | "harness";
+/** The tracks. docs/00-tracks.md says what each one is and what it costs. */
+export type RunnerKind = "claude-container" | "codex-container" | "eve" | "harness";
+
+/** The tracks the orchestrator can start today — each is a runner image. */
+export const CONTAINER_RUNNERS = ["claude-container", "codex-container"] as const;
+export type ContainerRunner = (typeof CONTAINER_RUNNERS)[number];
 
 export type PermissionMode =
   | "default"
