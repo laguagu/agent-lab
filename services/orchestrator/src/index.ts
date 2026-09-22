@@ -22,7 +22,7 @@ import type {
   RunnerCommand,
   RunnerEvent,
   SessionSpec,
-} from "@skill-lab/protocol";
+} from "@agent-lab/protocol";
 import {
   createRunner,
   destroySession,
@@ -67,8 +67,8 @@ function resolveSkillsPath(): string {
   if (existsSync(cache)) return cache;
   return path.join(repoRoot, "skills");
 }
-const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "skill-lab-runner:latest";
-const RUNNER_NETWORK = process.env.RUNNER_NETWORK ?? "skill-lab-agents";
+const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "agent-lab-runner-claude:latest";
+const RUNNER_NETWORK = process.env.RUNNER_NETWORK ?? "agent-lab-net";
 const RUNNER_MEMORY_MB = Number(process.env.RUNNER_MEMORY_MB ?? 2048);
 const RUNNER_CPUS = Number(process.env.RUNNER_CPUS ?? 2);
 /**

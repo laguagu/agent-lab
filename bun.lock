@@ -9,11 +9,11 @@
       },
     },
     "apps/web": {
-      "name": "@skill-lab/web",
+      "name": "@agent-lab/web",
       "version": "0.1.0",
       "dependencies": {
+        "@agent-lab/protocol": "workspace:*",
         "@monaco-editor/react": "^4.7.0",
-        "@skill-lab/protocol": "workspace:*",
         "@streamdown/code": "^1.1.1",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/xterm": "^6.0.0",
@@ -35,12 +35,12 @@
         "typescript": "^5.9.0",
       },
     },
-    "images/runner": {
-      "name": "@skill-lab/runner",
+    "images/runner-claude": {
+      "name": "@agent-lab/runner-claude",
       "version": "0.1.0",
       "dependencies": {
+        "@agent-lab/protocol": "workspace:*",
         "@anthropic-ai/claude-agent-sdk": "^0.3.245",
-        "@skill-lab/protocol": "workspace:*",
         "ws": "^8.18.0",
       },
       "devDependencies": {
@@ -50,18 +50,18 @@
       },
     },
     "packages/protocol": {
-      "name": "@skill-lab/protocol",
+      "name": "@agent-lab/protocol",
       "version": "0.1.0",
       "devDependencies": {
         "typescript": "^5.9.0",
       },
     },
     "services/orchestrator": {
-      "name": "@skill-lab/orchestrator",
+      "name": "@agent-lab/orchestrator",
       "version": "0.1.0",
       "dependencies": {
+        "@agent-lab/protocol": "workspace:*",
         "@hono/node-server": "^1.13.7",
-        "@skill-lab/protocol": "workspace:*",
         "dockerode": "^5.0.1",
         "hono": "^4.13.4",
         "ws": "^8.18.0",
@@ -75,6 +75,14 @@
     },
   },
   "packages": {
+    "@agent-lab/orchestrator": ["@agent-lab/orchestrator@workspace:services/orchestrator"],
+
+    "@agent-lab/protocol": ["@agent-lab/protocol@workspace:packages/protocol"],
+
+    "@agent-lab/runner-claude": ["@agent-lab/runner-claude@workspace:images/runner-claude"],
+
+    "@agent-lab/web": ["@agent-lab/web@workspace:apps/web"],
+
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@anthropic-ai/claude-agent-sdk": ["@anthropic-ai/claude-agent-sdk@0.3.245", "", { "optionalDependencies": { "@anthropic-ai/claude-agent-sdk-darwin-arm64": "0.3.245", "@anthropic-ai/claude-agent-sdk-darwin-x64": "0.3.245", "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.3.245", "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "0.3.245", "@anthropic-ai/claude-agent-sdk-linux-x64": "0.3.245", "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "0.3.245", "@anthropic-ai/claude-agent-sdk-win32-arm64": "0.3.245", "@anthropic-ai/claude-agent-sdk-win32-x64": "0.3.245" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.93.0", "@modelcontextprotocol/sdk": "^1.29.0", "zod": "^4.0.0" } }, "sha512-b/SXCxBxZfN4ItHFDUS1uJ3xhI5fOSv3/VxyZvekYmlsbSwZi/75UqKhVlT7qbB1LDJOB48ZmQdCTxWhJWjObA=="],
@@ -230,14 +238,6 @@
     "@shikijs/types": ["@shikijs/types@3.23.0", "", { "dependencies": { "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4" } }, "sha512-3JZ5HXOZfYjsYSk0yPwBrkupyYSLpAE26Qc0HLghhZNGTZg/SKxXIIgoxOpmmeQP0RRSDJTk1/vPfw9tbw+jSQ=="],
 
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
-
-    "@skill-lab/orchestrator": ["@skill-lab/orchestrator@workspace:services/orchestrator"],
-
-    "@skill-lab/protocol": ["@skill-lab/protocol@workspace:packages/protocol"],
-
-    "@skill-lab/runner": ["@skill-lab/runner@workspace:images/runner"],
-
-    "@skill-lab/web": ["@skill-lab/web@workspace:apps/web"],
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 

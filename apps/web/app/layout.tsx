@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Skill Lab",
-  description: "Run Agent Skills in your own container",
+  title: "Agent Lab",
+  description: "Run sandboxed agents locally, three ways",
 };
 
 export default function RootLayout({

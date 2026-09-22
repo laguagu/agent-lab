@@ -1,16 +1,16 @@
 {
-  "name": "@skill-lab/orchestrator",
+  "name": "@agent-lab/orchestrator",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists=../../.env --watch src/index.ts",
+    "dev": "node --env-file-if-exists=../../.env --watch-path=src src/index.ts",
     "start": "node --env-file-if-exists=../../.env src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
-    "@skill-lab/protocol": "workspace:*",
+    "@agent-lab/protocol": "workspace:*",
     "dockerode": "^5.0.1",
     "hono": "^4.13.4",
     "ws": "^8.18.0"

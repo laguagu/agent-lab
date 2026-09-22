@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Sparkles } from "lucide-react";
-import type { DiscoveredSkill } from "@skill-lab/protocol";
+import type { DiscoveredSkill } from "@agent-lab/protocol";
 
 /**
  * An empty conversation is where the user either understands what this tool does, or

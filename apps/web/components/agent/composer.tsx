@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Sparkles, Square } from "lucide-react";
-import type { DiscoveredSkill } from "@skill-lab/protocol";
+import type { DiscoveredSkill } from "@agent-lab/protocol";
 import { cn } from "@/lib/cn";
 
 /**

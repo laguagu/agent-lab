@@ -1,6 +1,7 @@
 // Uses the native WebSocket in Node 24 - no dependencies.
+const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
 const sid = process.argv[2];
-const ws = new WebSocket(`ws://localhost:8080/ws/client?session=${sid}`);
+const ws = new WebSocket(`ws://localhost:${PORT}/ws/client?session=${sid}`);
 const ptyId = "t1";
 let got = "";
 const t = setTimeout(() => {

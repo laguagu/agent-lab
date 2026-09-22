@@ -66,7 +66,7 @@ export default function StartPage() {
       <header>
         <h1 className="flex items-center gap-2 text-lg font-medium tracking-tight">
           <Sparkles className="size-4 text-accent" aria-hidden />
-          Skill Lab
+          Agent Lab
         </h1>
         <p className="mt-1 text-muted">
           Clone a repo into a container and let the agent run your skills against it.

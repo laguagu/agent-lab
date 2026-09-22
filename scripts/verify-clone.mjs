@@ -1,7 +1,8 @@
 // Proves the whole flow: clone a public repo into the container and list its files.
 // Uses the native WebSocket in Node 24 - no dependencies.
 
-const BASE = "http://localhost:8080";
+const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
+const BASE = `http://localhost:${PORT}`;
 const REPO = process.argv[2] ?? "https://github.com/sindresorhus/is-odd";
 
 const res = await fetch(`${BASE}/api/sessions`, {
@@ -17,7 +18,7 @@ if (!res.ok) {
 console.log(`session ${body.sessionId}, malli ${body.spec.model}`);
 console.log(`repo   ${REPO}`);
 
-const ws = new WebSocket(`ws://localhost:8080/ws/client?session=${body.sessionId}`);
+const ws = new WebSocket(`ws://localhost:${PORT}/ws/client?session=${body.sessionId}`);
 let listed = false;
 
 const timer = setTimeout(() => {
@@ -60,6 +61,6 @@ ws.addEventListener("message", (raw) => {
 });
 
 ws.addEventListener("error", (e) => {
-  console.log("WS-virhe:", e.message ?? e);
+  console.log("websocket error:", e.message ?? e);
   process.exit(4);
 });

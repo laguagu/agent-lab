@@ -18,7 +18,7 @@ services:
     # deliberate choice rather than whatever `latest` resolves to.
     # v1.98.0 verified 2026-08-25.
     image: ghcr.io/berriai/litellm:v1.98.0@sha256:d70b5e0686ecfa186b0f779d4681cf2ff17bbe9c9d7b7301d2e59fce246b668d
-    container_name: skill-lab-litellm
+    container_name: agent-lab-litellm
     restart: unless-stopped
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     volumes:
@@ -52,5 +52,5 @@ networks:
   # Runner containers join this network. They cannot see each other on the host
   # network and reach nothing but the model router.
   agents:
-    name: skill-lab-agents
+    name: agent-lab-net
     driver: bridge

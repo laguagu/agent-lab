@@ -1,7 +1,7 @@
 # Runner: the container the agent and the skills run in.
 #
 # The build context is the repo root, because the image also needs packages/protocol.
-#   docker build -f images/runner/Dockerfile -t skill-lab-runner:latest .
+#   docker build -f images/runner-claude/Dockerfile -t agent-lab-runner-claude:latest .
 #
 # TWO RULES THAT MUST NOT BE BROKEN:
 #
@@ -23,9 +23,9 @@ RUN cd packages/protocol && npx tsc -p tsconfig.build.json
 # --- dependencies ---------------------------------------------------------------
 FROM node:24-bookworm-slim AS deps
 WORKDIR /app
-COPY images/runner/package.json ./
+COPY images/runner-claude/package.json ./
 # The workspace:* protocol does not work with npm; swap it for a file: reference.
-RUN sed -i 's|"@skill-lab/protocol": "workspace:\*"|"@skill-lab/protocol": "file:./vendor/protocol"|' package.json
+RUN sed -i 's|"@agent-lab/protocol": "workspace:\*"|"@agent-lab/protocol": "file:./vendor/protocol"|' package.json
 COPY --from=protocol /build/packages/protocol/dist ./vendor/protocol/dist
 COPY --from=protocol /build/packages/protocol/package.json ./vendor/protocol/
 RUN npm install --omit=dev --no-audit --no-fund \
@@ -49,11 +49,11 @@ ENV HOME=/home/node \
 
 WORKDIR /app
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-# vendor/ must come along: npm installed @skill-lab/protocol as a file: reference, so
+# vendor/ must come along: npm installed @agent-lab/protocol as a file: reference, so
 # the node_modules entry is a symlink here. Without this the link dangles.
 COPY --from=deps --chown=node:node /app/vendor ./vendor
-COPY --chown=node:node images/runner/src ./src
-COPY --chown=node:node images/runner/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=node:node images/runner-claude/src ./src
+COPY --chown=node:node images/runner-claude/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
  && mkdir -p /workspace /home/node/.claude \
  && chown -R node:node /workspace /home/node

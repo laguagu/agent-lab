@@ -11,8 +11,8 @@
 import Docker from "dockerode";
 import type { Duplex } from "node:stream";
 
-export const LABEL_ROLE = "skill-lab.role";
-export const LABEL_SESSION = "skill-lab.session";
+export const LABEL_ROLE = "agent-lab.role";
+export const LABEL_SESSION = "agent-lab.session";
 
 const docker = new Docker();
 
@@ -50,8 +50,8 @@ export async function ensureNetwork(name: string): Promise<void> {
 
 function volumeNames(sessionId: string) {
   return {
-    workspace: `skill-lab-ws-${sessionId}`,
-    claude: `skill-lab-claude-${sessionId}`,
+    workspace: `agent-lab-ws-${sessionId}`,
+    claude: `agent-lab-claude-${sessionId}`,
   };
 }
 
@@ -78,7 +78,7 @@ export async function createRunner(
 
   const container = await docker.createContainer({
     Image: spec.image,
-    name: `skill-lab-runner-${spec.sessionId}`,
+    name: `agent-lab-runner-claude-${spec.sessionId}`,
     Labels: { [LABEL_ROLE]: "runner", [LABEL_SESSION]: spec.sessionId },
     Env: env,
     WorkingDir: "/workspace",

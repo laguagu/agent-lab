@@ -7,7 +7,7 @@
  */
 
 import { query, type Options, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { PermissionMode, SessionSpec } from "@skill-lab/protocol";
+import type { PermissionMode, SessionSpec } from "@agent-lab/protocol";
 
 /** Queue feeding the user's turns into a live session. */
 class PromptQueue implements AsyncIterable<SDKUserMessage> {

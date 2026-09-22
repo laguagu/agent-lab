@@ -16,7 +16,7 @@ import type {
   RunnerEvent,
   SessionStatus,
   ToolKind,
-} from "@skill-lab/protocol";
+} from "@agent-lab/protocol";
 import { RunnerClient } from "./runner-client";
 
 export type ToolPartState =

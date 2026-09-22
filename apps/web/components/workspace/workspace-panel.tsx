@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileCode2, GitCompare, RefreshCw, SquareTerminal } from "lucide-react";
-import type { FsNode, RunnerCapabilities } from "@skill-lab/protocol";
+import type { FsNode, RunnerCapabilities } from "@agent-lab/protocol";
 import type { RunnerClient } from "@/lib/runner-client";
 import { cn } from "@/lib/cn";
 import { FileTree } from "./file-tree";

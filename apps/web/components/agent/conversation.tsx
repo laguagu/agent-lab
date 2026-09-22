@@ -19,7 +19,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import type { ToolKind } from "@skill-lab/protocol";
+import type { ToolKind } from "@agent-lab/protocol";
 import type { Part, Turn } from "@/lib/use-runner-session";
 import { cn } from "@/lib/cn";
 import { Response } from "./response";

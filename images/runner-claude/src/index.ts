@@ -13,7 +13,7 @@ import {
   type RunnerCommand,
   type RunnerEventBody,
   type SessionSpec,
-} from "@skill-lab/protocol";
+} from "@agent-lab/protocol";
 import { startAgent, type AgentSession } from "./agent.ts";
 import { WorkspaceFs } from "./fs-api.ts";
 import { cloneInto } from "./workspace-setup.ts";
@@ -54,7 +54,7 @@ function fail(requestId: string, err: unknown) {
 }
 
 ws.on("open", () => {
-  console.log(`[runner] yhdistetty orkestraattoriin, sessio ${SESSION_ID}`);
+  console.log(`[runner] connected to orchestrator, session ${SESSION_ID}`);
   emit({ type: "session.status", status: "starting" });
 });
 
@@ -133,13 +133,13 @@ ws.on("message", async (raw) => {
 });
 
 ws.on("close", () => {
-  console.log("[runner] yhteys katkesi, suljetaan");
+  console.log("[runner] connection closed, shutting down");
   agent?.close();
   process.exit(0);
 });
 
 ws.on("error", (err) => {
-  console.error("[runner] WS-virhe:", err.message);
+  console.error("[runner] websocket error:", err.message);
 });
 
 /** Pumps the SDK message stream through the translator into the WebSocket. */

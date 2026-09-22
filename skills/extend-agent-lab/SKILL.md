@@ -1,13 +1,13 @@
 ---
-name: extend-skill-lab
-description: Extend Skill Lab itself — add an event or command to the wire protocol, add a second agent engine, or add a workspace panel. Use when working inside the skill-lab repository on the protocol, the runner, the orchestrator or the web UI.
+name: extend-agent-lab
+description: Extend Agent Lab itself — add an event or command to the wire protocol, add a new track (agent engine), or add a workspace panel. Use when working inside the agent-lab repository on the protocol, a runner, the orchestrator or the web UI.
 ---
 
-# Extend Skill Lab
+# Extend Agent Lab
 
 This repo has one load-bearing rule: **the UI never learns which engine runs in the
 container.** Everything crosses `packages/protocol`. Follow the seam and changes stay small;
-cut across it and the second engine becomes impossible.
+cut across it and the next track becomes impossible.
 
 Read `AGENTS.md` first — it holds the hard rules and the traps already paid for.
 
@@ -19,7 +19,7 @@ The protocol is a discriminated union, so the compiler finds every site for you.
    `commands.ts` (browser → runner). Document the field that is not obvious.
 2. `bun run build:protocol` — the package is compiled, not consumed as source, because Node
    refuses to strip types inside `node_modules`.
-3. Emit it in `images/runner/src/translate.ts`. **This is the only file allowed to read
+3. Emit it in `images/runner-claude/src/translate.ts`. **This is the only file allowed to read
    Claude-specific shapes.** If your new event needs SDK knowledge, it belongs here.
 4. Handle it in `apps/web/lib/use-runner-session.ts`. If it produces a conversation part,
    add its type to `PART_EVENTS` — otherwise it silently creates an empty turn.
@@ -28,12 +28,13 @@ The protocol is a discriminated union, so the compiler finds every site for you.
 A command that expects an answer carries a `requestId` and is answered with a `result`
 event. `RunnerClient.request()` already pairs them.
 
-## Adding a second engine
+## Adding a track
 
-The contract an engine implements is: dial out to the orchestrator over WebSocket, accept a
+A track is one way of running a sandboxed agent — see `docs/00-tracks.md` for the three that
+exist. The contract it implements is: dial out to the orchestrator over WebSocket, accept a
 `SessionSpec`, emit `RunnerEvent`s, accept `RunnerCommand`s.
 
-1. New image under `images/<engine>/` with its own `translate.ts`.
+1. New image under `images/runner-<track>/` with its own `translate.ts`.
 2. Report honest `capabilities` in `session.init`. The UI hides what an engine cannot do —
    `capabilities.pty: false` removes the terminal tab rather than breaking it.
 3. Do not touch the orchestrator or the web app. If you need to, the seam is in the wrong

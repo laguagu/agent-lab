@@ -2,7 +2,7 @@
  * Claude Agent SDK message stream -> RunnerEvent.
  *
  * This is the only file in the project allowed to read Claude-specific shapes.
- * Everything else — orchestrator, UI, components — sees only @skill-lab/protocol types.
+ * Everything else — orchestrator, UI, components — sees only @agent-lab/protocol types.
  * Adding another engine means writing another file like this and touching nothing else.
  */
 
@@ -12,8 +12,8 @@ import type {
   PermissionMode,
   RunnerEventBody,
   ToolKind,
-} from "@skill-lab/protocol";
-import { toolKindOf } from "@skill-lab/protocol";
+} from "@agent-lab/protocol";
+import { toolKindOf } from "@agent-lab/protocol";
 
 type ToolState = { name: string; filePath?: string };
 

@@ -10,7 +10,7 @@
  * `since` enables reconnects: the orchestrator replays whatever was missed from its buffer.
  */
 
-import type { RunnerCommand, RunnerEvent } from "@skill-lab/protocol";
+import type { RunnerCommand, RunnerEvent } from "@agent-lab/protocol";
 
 export type RunnerClientOptions = {
   sessionId: string;

@@ -1,7 +1,8 @@
 // Proves the agent actually answers and touches files.
 // Clones a repo, asks for one concrete task, follows the tool calls.
 
-const BASE = "http://localhost:8080";
+const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
+const BASE = `http://localhost:${PORT}`;
 const REPO = process.argv[2] ?? "https://github.com/octocat/Hello-World";
 const PROMPT =
   process.argv[3] ??
@@ -19,7 +20,7 @@ if (!res.ok) {
 }
 console.log(`session ${body.sessionId}, model ${body.spec.model}\n`);
 
-const ws = new WebSocket(`ws://localhost:8080/ws/client?session=${body.sessionId}`);
+const ws = new WebSocket(`ws://localhost:${PORT}/ws/client?session=${body.sessionId}`);
 let text = "";
 const tools = [];
 let finished = false;

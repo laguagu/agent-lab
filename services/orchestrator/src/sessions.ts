@@ -16,7 +16,7 @@ import type {
   RunnerEvent,
   RunnerEventBody,
   SessionSpec,
-} from "@skill-lab/protocol";
+} from "@agent-lab/protocol";
 
 const BUFFER_SIZE = 2000;
 

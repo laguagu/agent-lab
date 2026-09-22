@@ -1,9 +1,13 @@
-# Skill Lab
+# Agent Lab
 
-Run [Agent Skills](https://code.claude.com/docs/en/skills) (`SKILL.md`) inside a Docker
-container, with a browser UI on top: agent conversation, file tree, Monaco editor, diff
-view and a terminal into the same container. Develop against local Docker, deploy the same
-stack to a VPS.
+Run sandboxed agents locally, three different ways, and compare them side by side. One
+browser UI on top of all of them: conversation, file tree, Monaco editor, diff view and a
+terminal into the same sandbox.
+
+The three ways — the **tracks** — are `claude-container`, `eve` and `harness`. Read
+`docs/00-tracks.md` before working on any of them; it records what each one costs and the
+one finding that constrains the design (the `harness` track is not self-hostable today).
+Only `claude-container` is built.
 
 ## Running it
 
@@ -22,11 +26,12 @@ container discovered. Exit 0 means the whole chain works.
 
 | Path | What |
 | --- | --- |
-| `packages/protocol` | `RunnerEvent` / `RunnerCommand`. **The most important interface in the project** — it is what separates the engine from the UI. Zero dependencies. |
-| `images/runner` | The container the agent and the skills run in. Node 24 + `@anthropic-ai/claude-agent-sdk`. |
-| `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. |
-| `apps/web` | Next.js 16. UI only — it does not know which engine sits in the container. |
+| `packages/protocol` | `RunnerEvent` / `RunnerCommand`. **The most important interface in the project** — it is what separates a track from the UI. Zero dependencies. |
+| `images/runner-claude` | The `claude-container` track. Node 24 + `@anthropic-ai/claude-agent-sdk`. Further tracks go in sibling `images/runner-<track>/` directories. |
+| `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. Track-agnostic. |
+| `apps/web` | Next.js 16. UI only — it does not know which track sits in the container. |
 | `skills/` | The skills this repo ships. Committed, so they travel with the source. |
+| `docs/` | The comparison between tracks. This is the lab's actual output. |
 
 Runner containers **publish no ports**. They dial out to the orchestrator
 (`ws://host.docker.internal:8080/ws/runner`), which removes port allocation entirely and
@@ -127,3 +132,14 @@ file if it is open and has no unsaved edits. Previously you had to switch files 
   when running `docker run --entrypoint /usr/local/bin/...`.
 - The entrypoint changes directory to `/workspace`, so `CMD` uses an absolute path.
 - Bind mounts need `C:/...` form, not `/c/...`.
+- **A container elsewhere on the machine can steal the orchestrator's port from the
+  runner's point of view.** The orchestrator binds `0.0.0.0:8080`; an unrelated container
+  publishing `127.0.0.1:8080->8080` binds the more specific address. Both listen happily.
+  The host reaches the orchestrator, `host.docker.internal` reaches the other container,
+  and the runner exits 0 after logging `websocket error: Unexpected server response: 200`.
+  Diagnose from inside the network, not from the host:
+  `docker run --rm --network agent-lab-net curlimages/curl -si http://host.docker.internal:8080/api/health`.
+  Cost: one debugging session on 2026-09-22, against an Adminer container.
+- **`node --watch` watches `node_modules`.** Package-manager churn restarted the
+  orchestrator mid-handshake and wiped its in-memory sessions. The dev script pins
+  `--watch-path=src`; do not drop that flag.

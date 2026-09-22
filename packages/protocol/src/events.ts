@@ -57,6 +57,43 @@ export type ToolKind =
   | "mcp"
   | "other";
 
+/**
+ * Normalise a raw SDK tool name into the kind the UI selects a component from.
+ * Name comparison happens here and nowhere else.
+ *
+ * The names are Claude Code's, but the mapping is not track-specific: a track whose
+ * engine calls its shell tool something else maps it to `"bash"` in its own translator
+ * before this is reached.
+ */
+export function toolKindOf(toolName: string): ToolKind {
+  switch (toolName) {
+    case "Bash":
+      return "bash";
+    case "Read":
+      return "read";
+    case "Write":
+      return "write";
+    case "Edit":
+    case "MultiEdit":
+      return "edit";
+    case "Glob":
+      return "glob";
+    case "Grep":
+      return "grep";
+    case "Task":
+      return "task";
+    case "Skill":
+      return "skill";
+    case "TodoWrite":
+      return "todo";
+    case "WebSearch":
+    case "WebFetch":
+      return "web";
+    default:
+      return toolName.startsWith("mcp__") ? "mcp" : "other";
+  }
+}
+
 export type FileChangeOp = "create" | "modify" | "delete" | "rename";
 
 export type SessionStatus =

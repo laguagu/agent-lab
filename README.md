@@ -1,19 +1,31 @@
-# Skill Lab
+# Agent Lab
 
-Run your own [Agent Skills](https://code.claude.com/docs/en/skills) inside a Docker
-container, with a browser UI on top.
+Run sandboxed agents locally, three different ways, and compare them side by side.
 
-Paste a public git URL, pick a model, and the container clones the repo, discovers your
-skill library and lets the agent work on it — while you watch the file tree, editor, diff
-and terminal of that same container.
+An agent that decides for itself — writes a script, runs it, reads the error, fixes it — has
+to run somewhere that a mistake cannot hurt. There is no single right answer to *where*.
+This repository builds the three serious ones and puts the same browser UI on all of them:
+conversation, file tree, editor, diff and a terminal into the same sandbox.
 
-<!-- Contributor and agent notes: AGENTS.md -->
+| Track | The agent is | Sandbox | Production |
+| --- | --- | --- | --- |
+| **`claude-container`** | the Claude Agent SDK | a Docker container this repo starts | any Docker host, OpenShift, a VPS |
+| **`eve`** | a directory of files you author | eve's backend | `eve deploy` → Vercel |
+| **`harness`** | Claude Code / Codex, driven from code | Vercel Sandbox, **required** | Vercel |
+
+Read [docs/00-tracks.md](docs/00-tracks.md) before picking one. The short version: only
+`claude-container` runs without an external service, and the `harness` track cannot be
+self-hosted today because its adapter needs a network sandbox with an exposed port and the
+only documented provider is Vercel's.
+
+Status: `claude-container` is built and verified end to end. `eve` and `harness` are next —
+see [Roadmap](#roadmap).
 
 ## How it works
 
 ```
 browser ──┬── web            Next.js 16 · port 3000
-          │                  UI only
+          │                  UI only — it does not know which track is running
           │
           └── orchestrator   Node 24 + Hono + ws · port 8080
                              the only process holding the Docker socket
@@ -21,13 +33,17 @@ browser ──┬── web            Next.js 16 · port 3000
               ┌───────────────────┴──────────────────┐
               │                                      │
         litellm (optional)                    runner-<sessionId>
-        port 4000                             Node 24 + Claude Agent SDK
+        port 4000                             Node 24 + the track's engine
         Anthropic format in,                  publishes no ports; dials out
         any provider out                      /workspace + /skills (ro)
 ```
 
 Runner containers publish no ports — they dial out to the orchestrator. That removes port
 allocation entirely and behaves identically on Windows and Linux.
+
+`packages/protocol` is the seam. Everything the UI knows about an agent arrives as a
+`RunnerEvent`, and the UI degrades from the `capabilities` field rather than guessing. A new
+track is a new translator, not a new UI.
 
 ## Quick start
 
@@ -45,15 +61,15 @@ bun run dev:web            # port 3000
 
 ### Skills
 
-The repo ships its own skills in `skills/`, so they travel with the source and a fresh
-clone works with no setup. To add your own library on top:
+The repo ships its own skills in `skills/`, so a fresh clone works with no setup. To add your
+own library on top:
 
 ```bash
 SKILLS_SRC=~/my-skills bun run sync-skills
 ```
 
-That merges both into `.skills-cache/` (gitignored), which the orchestrator then mounts
-instead of `skills/`. Any directory of `<name>/SKILL.md` folders works.
+That merges both into `.skills-cache/` (gitignored), which the orchestrator mounts instead of
+`skills/`. Any directory of `<name>/SKILL.md` folders works.
 
 ## Verifying
 
@@ -68,7 +84,7 @@ Four scripts, no test framework, each exits 0 on success:
 
 ## Models
 
-The runner speaks the Anthropic Messages format, which gives two routes:
+The `claude-container` runner speaks the Anthropic Messages format, which gives two routes:
 
 | Route | Configuration | When |
 | --- | --- | --- |
@@ -88,24 +104,22 @@ arbitrary code, so it must not be able to read the keys that pay for it.
 
 ## Container isolation
 
-Runner containers drop all capabilities, run as uid 1000, get `no-new-privileges`, a
-memory and CPU ceiling, a pid limit and a `noexec` tmpfs. They sit on their own bridge
-network and never see the Docker socket.
+Runner containers drop all capabilities, run as uid 1000, get `no-new-privileges`, a memory
+and CPU ceiling, a pid limit and a `noexec` tmpfs. They sit on their own bridge network and
+never see the Docker socket.
 
-This is a lab, not a hardened multi-tenant host. Skills are arbitrary code and the agent
-will run them, so treat the container as a boundary against accidents rather than against
-an adversary. For stronger isolation see
-[gVisor](https://gvisor.dev) or a microVM.
+This is a lab, not a hardened multi-tenant host. Skills are arbitrary code and the agent will
+run them, so treat the container as a boundary against accidents rather than against an
+adversary. For stronger isolation see [gVisor](https://gvisor.dev) or a microVM.
 
-## Status
-
-Working end to end and verified. What is not built yet:
+## Roadmap
 
 | | |
 | --- | --- |
-| Permission flow | `canUseTool` → `permission.request` → approval card. Protocol and UI are ready; the runner does not send requests yet. |
-| Session persistence | The `~/.claude` volume already survives, and `SessionSpec.resume` is defined. Not wired to the UI. |
-| Second engine | The HTTP+WS contract was designed for one, but only the Claude Agent SDK engine exists. |
+| `eve` track | The agent-as-files engine, wired to the same protocol. Gives the `eve deploy` path. |
+| `harness` track | `HarnessAgent` + `claudeCode` on Vercel Sandbox. Needs a Vercel login; cannot run offline. |
+| Permission flow | `canUseTool` → `permission.request` → approval card. Protocol and UI are ready; no runner sends requests yet. This is the missing piece for letting an agent decide and execute unsupervised. |
+| Session persistence | The `~/.claude` volume already survives and `SessionSpec.resume` is defined. Not wired to the UI. |
 | Deployment | Compose is deployment-ready; TLS, auth and provisioning are not written. |
 
 ## Licence

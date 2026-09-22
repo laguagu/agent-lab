@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import type { FsNode } from "@skill-lab/protocol";
+import type { FsNode } from "@agent-lab/protocol";
 import { iconForDir, iconForFile } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 

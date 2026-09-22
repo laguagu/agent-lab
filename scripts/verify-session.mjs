@@ -1,7 +1,8 @@
 // Uses the native WebSocket in Node 24 - no dependencies.
 // Vertical slice: create a session, wait for the container to dial back, print init.
 
-const BASE = "http://localhost:8080";
+const PORT = process.env.ORCHESTRATOR_PORT ?? "8080";
+const BASE = `http://localhost:${PORT}`;
 
 const res = await fetch(`${BASE}/api/sessions`, {
   method: "POST",
@@ -15,7 +16,7 @@ if (!res.ok) {
 }
 console.log("session created:", body.sessionId);
 
-const ws = new WebSocket(`ws://localhost:8080/ws/client?session=${body.sessionId}`);
+const ws = new WebSocket(`ws://localhost:${PORT}/ws/client?session=${body.sessionId}`);
 let done = false;
 
 const timer = setTimeout(() => {
@@ -52,7 +53,7 @@ ws.addEventListener("message", (raw) => {
     // Also exercise the file API inside the container.
     ws.send(JSON.stringify({ type: "fs.list", requestId: "r1", path: ".", depth: 2 }));
     setTimeout(() => {
-      console.log("\n(siivotaan sessio)");
+      console.log("\n(cleaning up the session)");
       fetch(`${BASE}/api/sessions/${body.sessionId}?purge=1`, { method: "DELETE" })
         .then(() => {
           // Close the socket before exiting: on Windows libuv asserts if a handle is

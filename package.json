@@ -1,5 +1,5 @@
 {
-  "name": "skill-lab",
+  "name": "agent-lab",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -13,13 +13,13 @@
     "up:gateway": "COMPOSE_PROFILES=gateway docker compose up --build",
     "down": "docker compose down",
     "logs": "docker compose logs -f",
-    "clean:runners": "docker ps -aq --filter label=skill-lab.role=runner | xargs -r docker rm -f",
-    "build:image": "docker build -f images/runner/Dockerfile -t skill-lab-runner:latest .",
+    "clean:runners": "docker ps -aq --filter label=agent-lab.role=runner | xargs -r docker rm -f",
+    "build:image": "docker build -f images/runner-claude/Dockerfile -t agent-lab-runner-claude:latest .",
     "build:protocol": "bun --cwd=packages/protocol run build",
     "dev:orchestrator": "bun --cwd=services/orchestrator run dev",
     "dev:web": "bun --cwd=apps/web run dev",
     "verify": "cd services/orchestrator && node ../../scripts/verify-session.mjs",
-    "typecheck": "bun --cwd=packages/protocol run typecheck && bun --cwd=images/runner run typecheck && bun --cwd=services/orchestrator run typecheck && bun --cwd=apps/web run typecheck"
+    "typecheck": "bun --cwd=packages/protocol run typecheck && bun --cwd=images/runner-claude run typecheck && bun --cwd=services/orchestrator run typecheck && bun --cwd=apps/web run typecheck"
   },
   "devDependencies": {
     "typescript": "^5.9.0"
