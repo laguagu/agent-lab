@@ -21,6 +21,12 @@ only documented provider is Vercel's.
 Status: `claude-container` is built and verified end to end. `eve` and `harness` are next —
 see [Roadmap](#roadmap).
 
+The repo is also meant to be handed to an agent as context when the task is *build me a
+sandboxed agent that runs code*. Two files carry that: `docs/00-tracks.md` for what has been
+measured here, and [`skills/code-agent-sandboxes`](skills/code-agent-sandboxes/SKILL.md) for
+the decision itself — which framework, which sandbox, and which deployment target, including
+the constraints that rule most options out on OpenShift.
+
 ## How it works
 
 ```

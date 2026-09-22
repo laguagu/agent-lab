@@ -18,7 +18,7 @@
     "build:protocol": "bun --cwd=packages/protocol run build",
     "dev:orchestrator": "bun --cwd=services/orchestrator run dev",
     "dev:web": "bun --cwd=apps/web run dev",
-    "verify": "cd services/orchestrator && node ../../scripts/verify-session.mjs",
+    "verify": "cd services/orchestrator && node --env-file-if-exists=../../.env ../../scripts/verify-session.mjs",
     "typecheck": "bun --cwd=packages/protocol run typecheck && bun --cwd=images/runner-claude run typecheck && bun --cwd=services/orchestrator run typecheck && bun --cwd=apps/web run typecheck"
   },
   "devDependencies": {

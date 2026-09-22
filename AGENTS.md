@@ -30,7 +30,7 @@ container discovered. Exit 0 means the whole chain works.
 | `images/runner-claude` | The `claude-container` track. Node 24 + `@anthropic-ai/claude-agent-sdk`. Further tracks go in sibling `images/runner-<track>/` directories. |
 | `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. Track-agnostic. |
 | `apps/web` | Next.js 16. UI only — it does not know which track sits in the container. |
-| `skills/` | The skills this repo ships. Committed, so they travel with the source. |
+| `skills/` | The skills this repo ships. Committed, so they travel with the source. `code-agent-sandboxes` is the one to read when the task is to *build* a sandboxed code-executing agent rather than extend this lab. |
 | `docs/` | The comparison between tracks. This is the lab's actual output. |
 
 Runner containers **publish no ports**. They dial out to the orchestrator
