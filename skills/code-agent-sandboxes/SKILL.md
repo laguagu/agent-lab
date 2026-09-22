@@ -1,6 +1,6 @@
 ---
 name: code-agent-sandboxes
-description: Choose how to run an agent that writes and executes code — which framework, which Python/bash sandbox, and which deployment target. Use whenever a task involves an agent running generated code, a `run_python` or code-interpreter tool, a data-analysis agent, or a coding agent that edits files and runs tests, and whenever the question is where that code should execute: CSC Rahti/OpenShift, Vercel, a VPS, a customer's own hardware, or a hosted sandbox API. Triggers on "sandbox agent", "aja python koodia", "koodiagentti", "code interpreter", "run_python", "E2B", "Daytona", "Modal", "Vercel Sandbox", "code execution tool", "OpenHands", "smolagents", "agentti joka ajaa koodia", "miten ajan agenttia kontissa", and on any question of the form "which framework should I use for an agent that ...". Also use when reviewing an existing agent that executes code, to check its isolation and credential exposure.
+description: Choose how to run an agent that writes and executes code — which framework, which Python/bash sandbox, and which deployment target. Use whenever a task involves an agent running generated code, a `run_python` or code-interpreter tool, a data-analysis agent, or a coding agent that edits files and runs tests, and whenever the question is where that code should execute — CSC Rahti/OpenShift, Vercel, a VPS, a customer's own hardware, or a hosted sandbox API. Triggers on "sandbox agent", "aja python koodia", "koodiagentti", "code interpreter", "run_python", "E2B", "Daytona", "Modal", "Vercel Sandbox", "code execution tool", "OpenHands", "smolagents", "agentti joka ajaa koodia", "miten ajan agenttia kontissa", and on any question of the form "which framework should I use for an agent that ...". Also use when reviewing an existing agent that executes code, to check its isolation and credential exposure.
 ---
 
 # Running an agent that executes code
@@ -89,6 +89,14 @@ the Claude Code adapter runs a bridge inside the sandbox and streams over an exp
 it requires a network sandbox with open ports, and the documented provider is Vercel's. It is
 not self-hostable without writing a sandbox provider.
 
+Before authoring any tool, check what the vendor's own SDK already hosts. Staying inside
+Anthropic's or OpenAI's framework unlocks a set of server-side tools — code execution, web
+search and fetch, file handling, computer use — that run on their infrastructure and need no
+sandbox, no container and no code from you beyond enabling them. Enumerating them here would
+rot, so read the provider's tool-use documentation before writing a `run_python` or a web
+fetcher by hand. The trade is the one in Step 1: convenience and zero ops against code that
+cannot reach your private network, and data that leaves your perimeter.
+
 Match the model route to the framework before committing: the Claude Agent SDK speaks only
 the Anthropic Messages format, so pointing it at Azure OpenAI or Gemini requires a translation
 gateway (LiteLLM) as an extra component. The AI SDK and anything OpenAI-compatible avoid that
@@ -117,18 +125,51 @@ a model that deletes the wrong file or loops forever. It is not a boundary again
 adversary who controls the prompt. If untrusted input reaches the agent, you need process- or
 kernel-level isolation, which means a separate pod, a hosted sandbox, or a microVM.
 
+## Step 5 — the contract the execution tool must satisfy
+
+Whichever route is chosen, the write → run → fix loop closes only if the tool hands the model
+enough to diagnose its own failure. This is where implementations quietly break, because the
+tool looks like it works — code runs, output appears — while the agent is unable to recover
+from an error it caused.
+
+The contract, independent of language and vendor:
+
+- **Return stdout, stderr and the exit code as three separate fields, verbatim.** The loop
+  runs on the error text. A tool that returns only stdout, or that collapses a traceback into
+  "execution failed", leaves the model guessing and it will retry the same broken code.
+- **Truncate long output from the middle, not the end.** A Python traceback puts the exception
+  type and message last; tail-truncation throws away the only line that matters.
+- **Report a timeout as a distinct outcome from a non-zero exit.** They call for different
+  responses — shrink the work versus fix the code — and a model told only "failed" cannot
+  tell them apart.
+- **State whether the working directory persists between calls, and mean it.** An agent that
+  assumes persistence writes a file on turn 1 and reads it on turn 3. Both persistent and
+  ephemeral are fine; silence is not.
+- **Give artifacts a retrieval path.** "Saved chart.png" is worthless if nothing can fetch the
+  bytes back out of the sandbox.
+- **Cap the turns and surface the cap.** An unbounded "keep retrying until it works" is how a
+  single request becomes dozens of round-trips against a dependency that was never going to
+  install.
+
+On validation specifically — exit code 0 is not evidence the work is correct, only that
+nothing crashed. If the task has a checkable result, have the agent write the check as code
+(an assertion, an expected row count, a reconciled total) and run it in the same sandbox. A
+model grading its own prose output is far weaker evidence than a failing assert.
+
 ## Choosing between hosted sandbox vendors
 
 If a hosted sandbox is the answer, the differences that actually decide it:
 
 - **Isolation model.** Firecracker microVM (own kernel) versus a shared-kernel container.
   Container-by-default is fine for code you mostly trust and weak for arbitrary model output.
-- **Billing model beats the hourly rate.** Vendors that bill only active CPU rather than
-  wall-clock session length can differ by an order of magnitude for bursty workloads — the
-  same traffic can land near $36 or near $414 a month depending purely on which is billed.
-  Model your own pattern (session length versus CPU seconds) before comparing prices.
+- **Billing model beats the hourly rate.** Some vendors bill wall-clock session length,
+  others only active CPU. For bursty work — a sandbox alive for minutes but computing for
+  seconds — that distinction moves the bill by an order of magnitude, far more than the
+  headline per-hour rate does. Model your own session-length-versus-CPU-seconds pattern
+  before comparing prices at all.
 - **Cold start**, if a user is waiting on the first call.
-- **GPU inside the sandbox**, which narrows the field to roughly one vendor.
+- **GPU inside the sandbox**, which as of this writing narrows the field to roughly one
+  vendor — check, rather than assuming a vendor has added it.
 - **Self-hosting reality.** "Open source" rarely means `helm install`: the mature self-host
   path here is a Terraform/Nomad/Consul/Firecracker stack with a Postgres dependency, not a
   Kubernetes deployment. Treat self-hosting a sandbox platform as an infrastructure project
@@ -180,9 +221,7 @@ than as working code.
 
 ## Related skills
 
-These live in a personal skill library rather than this repo, so they may not be present:
-`csc-rahti` for Rahti/OpenShift manifests, images and secrets; `ai-sdk-7` for
-`ToolLoopAgent`, `HarnessAgent` and tool definitions; `openai-agents-sdk` for the Python
-equivalent; `claude-api` for the `code_execution` tool's parameters, versions and pricing.
-Their absence changes nothing above — it only means the deployment detail has to come from
-the vendor's own documentation.
+Deployment and SDK detail lives elsewhere and may not be installed — `csc-rahti`
+(Rahti/OpenShift manifests, images, secrets), `ai-sdk-7` (`ToolLoopAgent`, `HarnessAgent`),
+`openai-agents-sdk` (the Python equivalent), `claude-api` (`code_execution` parameters and
+pricing). Fall back to the vendor's own documentation when they are absent.

@@ -9,6 +9,12 @@ The three ways — the **tracks** — are `claude-container`, `eve` and `harness
 one finding that constrains the design (the `harness` track is not self-hostable today).
 Only `claude-container` is built.
 
+**If the task is to build a sandboxed agent that executes code — rather than to extend this
+lab — read `skills/code-agent-sandboxes/SKILL.md` first.** It carries the decision and the
+tool contract. The explicit instruction is necessary: `skills/` is mounted into the runner
+container, but it is not a skill discovery path for a client running on the host, so the
+skill does not auto-trigger when this repo is merely open in an editor.
+
 ## Running it
 
 ```bash
