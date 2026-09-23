@@ -1,13 +1,13 @@
 # Agent Lab
 
-Run sandboxed agents locally, three different ways, and compare them side by side. One
-browser UI on top of all of them: conversation, file tree, Monaco editor, diff view and a
+Run sandboxed agents locally in several ways and compare them side by side. One browser
+UI sits on top of all of them: conversation, file tree, Monaco editor, diff view and a
 terminal into the same sandbox.
 
 The ways — the **tracks** — are `claude-container`, `codex-container`, `eve` and
-`harness`. Read `docs/00-tracks.md` before working on any of them; it records what each one
-costs and the findings that constrain the design (the `harness` track is not self-hostable
-today; Codex's own sandbox cannot start inside Docker). The two container tracks are built.
+`harness`. Read `docs/00-tracks.md` before working on any of them; it records each track's
+status, what it costs and the findings that constrain the design (the `harness` track is
+not self-hostable; Codex's own sandbox cannot start inside Docker).
 `docs/01-options.md` surveys the options beyond this lab's shape.
 
 **If the task is to build a sandboxed agent that executes code — rather than to extend this
@@ -35,10 +35,10 @@ container discovered. Exit 0 means the whole chain works.
 | Path | What |
 | --- | --- |
 | `packages/protocol` | `RunnerEvent` / `RunnerCommand`. **The most important interface in the project** — it is what separates a track from the UI. Zero dependencies. |
-| `images/runner-claude` | The `claude-container` track. Node 24 + `@anthropic-ai/claude-agent-sdk`. Further tracks go in sibling `images/runner-<track>/` directories. |
-| `images/runner-codex` | The `codex-container` track. Node 24 + `@openai/codex-sdk`, pinned exactly. `fs-api.ts` and `workspace-setup.ts` are copies of runner-claude's — keep them identical until a third track justifies a shared package. |
+| `images/runner-claude` | The `claude-container` track. Node + `@anthropic-ai/claude-agent-sdk`. Further tracks go in sibling `images/runner-<track>/` directories. |
+| `images/runner-codex` | The `codex-container` track. Node + `@openai/codex-sdk`, pinned exactly. `fs-api.ts` and `workspace-setup.ts` are copies of runner-claude's — keep them identical until a third track justifies a shared package. |
 | `services/orchestrator` | The only process holding the Docker socket. Container lifecycle, WebSocket fan-out, terminal. Knows a track only as a row in `TRACKS`: image, state directory, default model, credentials. |
-| `apps/web` | Next.js 16. UI only — it does not know which track sits in the container. |
+| `apps/web` | Next.js. UI only — it does not know which track sits in the container. |
 | `skills/` | The skills this repo ships. Committed, so they travel with the source. `code-agent-sandboxes` is the one to read when the task is to *build* a sandboxed code-executing agent rather than extend this lab. |
 | `docs/` | The comparison between tracks. This is the lab's actual output. |
 
@@ -48,10 +48,10 @@ behaves identically on Windows and Linux.
 
 ## Hard rules
 
-1. **Build the runner images with npm, not bun.** The native `claude` binary (392 MB) ships
-   as the optional dependency `@anthropic-ai/claude-agent-sdk-linux-x64`. **Bun installs
-   neither it nor the peer dependencies** — verified 2026-08-25 — and the run then dies with
-   `spawn ENOENT`. npm installs both. The Dockerfile asserts the binary exists; do not
+1. **Build the runner images with npm, not bun.** The native `claude` binary ships as the
+   optional dependency `@anthropic-ai/claude-agent-sdk-linux-x64`. **Bun installs neither
+   it nor the peer dependencies**, and the run then dies with `spawn ENOENT`. npm
+   installs both. The Dockerfile asserts the binary exists; do not
    remove that check. The Codex image asserts `@openai/codex-linux-x64` the same way.
 2. **Never bundle the runner.** `bun build` breaks the SDK's CLI discovery: `import.meta.url`
    resolves to `/$bunfs/root/`, where `cli.js` does not physically exist.
@@ -79,8 +79,8 @@ behaves identically on Windows and Linux.
    mounted by default.
 10. **The codex-container track runs `danger-full-access` on purpose.** Codex's bubblewrap
    sandbox needs unprivileged user namespaces, which Docker's default seccomp profile
-   denies: `read-only` and `workspace-write` fail every command. Measured 2026-09-22. Do
-   not "harden" it back to `workspace-write`.
+   denies: `read-only` and `workspace-write` fail every command. Do not "harden" it back
+   to `workspace-write`.
 
 ## Two non-obvious implementation details
 
@@ -112,7 +112,7 @@ Model routing has two levels:
 Provider credentials live only in the gateway, never inside a runner container.
 
 > LiteLLM 1.82.7 and 1.82.8 shipped credential-stealing malware (PyPI, 2026-03-24). The
-> compose file pins v1.98.0 **by digest**, not by tag. Do not switch it to `latest`.
+> compose file pins the LiteLLM image **by digest**, not by tag. Do not switch it to `latest`.
 
 ## UI conventions
 
@@ -128,21 +128,21 @@ Provider credentials live only in the gateway, never inside a runner container.
   because the Gemini and Azure marks carry internal `id`s that would collide in one
   document. Brand marks keep their own colour and are never tinted.
 - **The accent is amber and it means agent activity** — a skill call, a running tool, the
-  primary action. Measured, not eyeballed: 6.1:1 light, 11.5:1 dark.
+  primary action. Its contrast is measured in both themes, not eyeballed.
 - **Motion only when it communicates.** Part entry conveys order; three pulsing dots convey
   that a tool is still running. `useReducedMotion` is honoured everywhere.
 - **Empty reasoning blocks are not drawn.** The model emits `redacted_thinking` blocks with
   no text; `isRenderable` filters them out.
 
-### Two traps already fixed
+### Two traps
 
-**The reducer must not create a turn from events that produce no part.** `finish`, `usage`
-and `result` used to spawn an empty assistant turn that displaced the empty state and its
-instructions. The `PART_EVENTS` set bounds this.
+**The reducer must not create a turn from events that produce no part.** Otherwise
+`finish`, `usage` and `result` spawn an empty assistant turn that displaces the empty state
+and its instructions. The `PART_EVENTS` set bounds this.
 
 **An open file reloads when the agent writes to it.** The runner emits `file.changed` with
 the real path, taken from the tool's `file_path` input, and the workspace panel re-reads the
-file if it is open and has no unsaved edits. Previously you had to switch files and back.
+file if it is open and has no unsaved edits.
 
 ## Windows notes
 
@@ -157,7 +157,6 @@ file if it is open and has no unsaved edits. Previously you had to switch files 
   and the runner exits 0 after logging `websocket error: Unexpected server response: 200`.
   Diagnose from inside the network, not from the host:
   `docker run --rm --network agent-lab-net curlimages/curl -si http://host.docker.internal:8080/api/health`.
-  Cost: one debugging session on 2026-09-22, against an Adminer container.
 - **`node --watch` watches `node_modules`.** Package-manager churn restarted the
   orchestrator mid-handshake and wiped its in-memory sessions. The dev script pins
   `--watch-path=src`; do not drop that flag.
