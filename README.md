@@ -1,5 +1,7 @@
 # Agent Lab
 
+> **Archived 1 November 2026.** No work since 23 September, and nothing depends on it. The folder is `~/dev/personal/_archive/skill-lab`. If `lumicode-agents` needs a sandbox, read [docs/01-options.md](docs/01-options.md) first.
+
 Run sandboxed agents locally, several different ways, and compare them side by side.
 
 An agent that decides for itself — writes a script, runs it, reads the error, fixes it — has
